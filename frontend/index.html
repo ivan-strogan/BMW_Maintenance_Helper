@@ -48,10 +48,10 @@
         <div x-show="editing" class="flex items-center gap-2 justify-end">
           <input type="number" x-model.number="draft" x-ref="odoInput"
                  x-init="$nextTick(() => editing && $refs.odoInput?.focus())"
-                 @keydown.enter="saveOdometer(draft); editing=false"
+                 @keydown.enter="await saveOdometer(draft); editing=false"
                  @keydown.escape="editing=false"
                  class="w-32 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-right font-mono text-sm focus:outline-none focus:border-bmw-blue">
-          <button @click="saveOdometer(draft); editing=false"
+          <button @click="await saveOdometer(draft); editing=false"
                   class="text-xs bg-bmw-blue hover:bg-blue-500 text-white px-3 py-1.5 rounded transition-colors">Save</button>
           <button @click="editing=false"
                   class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1.5">Cancel</button>

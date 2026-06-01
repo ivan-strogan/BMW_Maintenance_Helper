@@ -52,9 +52,13 @@ function app() {
     // ── Odometer update ────────────────────────────────────────────────────
     async saveOdometer(km) {
       if (!km || km < 0) return;
-      await fetch(`/api/vehicle/odometer?odometer_km=${km}`, { method: 'PATCH' });
-      this.vehicle = { ...this.vehicle, odometer_km: km };
-      await this.loadScheduleStatus();
+      const res = await fetch(`/api/vehicle/odometer?odometer_km=${km}`, { method: 'PATCH' });
+      if (res.ok) {
+        await this.loadConfig();          // re-read from server to confirm write
+        await this.loadScheduleStatus();  // recompute status with new odometer
+      } else {
+        console.error('Odometer save failed:', res.status, await res.text());
+      }
     },
 
     // ── History modal ──────────────────────────────────────────────────────
