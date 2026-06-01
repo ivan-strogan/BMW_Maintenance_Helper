@@ -46,6 +46,9 @@ def compute_status(
         km_interval    = item.interval_replace_km    or item.interval_inspect_km
         month_interval = item.interval_replace_months or item.interval_inspect_months
 
+        # Primary action for this item
+        action = "Replace" if (item.interval_replace_km or item.interval_replace_months) else "Inspect"
+
         # No intervals defined → nothing to compute
         if km_interval is None and month_interval is None:
             results.append(ScheduleItemStatus(
@@ -125,6 +128,7 @@ def compute_status(
             remaining_days=time_remaining,
             status=status,
             overdue_reason=reason,
+            action=action,
         ))
 
     return results
