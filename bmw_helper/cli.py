@@ -29,13 +29,12 @@ def serve(
 ):
     """Start the web UI and open it in the browser."""
     import uvicorn
-    from bmw_helper.api import api
 
     url = f"http://localhost:{port}"
-    console.print(f"[bold green]BMW Maintenance Helper →[/bold green] {url}")
+    console.print(f"[bold green]BMW Maintenance Helper ->[/bold green] {url}")
     if not no_browser:
         webbrowser.open(url)
-    uvicorn.run(api, host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("bmw_helper.api:api", host="0.0.0.0", port=port, reload=True)
 
 
 # ─── config ──────────────────────────────────────────────────────────────────
@@ -157,9 +156,38 @@ def schedule_status():
 @schedule_app.command("import")
 def schedule_import(
     pdf_path: Path = typer.Argument(..., help="Path to maintenance schedule PDF"),
+    out: Path = typer.Option(None, "--out", help="Output YAML path (default: config/schedule.yaml)"),
 ):
-    """Parse a maintenance schedule PDF into config/schedule.yaml. (Phase 2)"""
-    console.print(f"[yellow]Schedule PDF import coming in Phase 2 — {pdf_path}[/yellow]")
+    """Parse a maintenance schedule PDF into config/schedule.yaml."""
+    from bmw_helper.schedule_importer import import_schedule
+
+    if not pdf_path.exists():
+        console.print(f"[bold red]Error:[/bold red] File not found: {pdf_path}")
+        raise typer.Exit(1)
+
+    config_dir = Path(__file__).parent.parent / "config"
+    dest = out or (config_dir / "schedule.yaml")
+
+    console.print(f"Parsing [bold]{pdf_path.name}[/bold] ...")
+    items = import_schedule(pdf_path, dest)
+
+    table = Table(title=f"Imported {len(items)} items -> {dest}", box=box.ROUNDED)
+    table.add_column("ID", style="dim")
+    table.add_column("Name", style="bold")
+    table.add_column("Replace km", justify="right")
+    table.add_column("Inspect km", justify="right")
+    table.add_column("Replace months", justify="right")
+
+    for it in items:
+        table.add_row(
+            it["id"],
+            it["name"],
+            str(it.get("interval_replace_km") or "—"),
+            str(it.get("interval_inspect_km") or "—"),
+            str(it.get("interval_replace_months") or "—"),
+        )
+    console.print(table)
+    console.print(f"[green]Written to:[/green] {dest}")
 
 
 # ─── history ─────────────────────────────────────────────────────────────────

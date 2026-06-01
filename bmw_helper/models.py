@@ -107,6 +107,7 @@ class ScheduleItemStatus(BaseModel):
     # overall
     status: MaintenanceStatus
     overdue_reason: Optional[str] = None  # "km", "time", or "both"
+    action: str = "Replace"               # "Replace" or "Inspect"
 
 
 # ─── Parts / Catalog ──────────────────────────────────────────────────────────
