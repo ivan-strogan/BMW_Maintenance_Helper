@@ -1,0 +1,35 @@
+# Copy this file to vehicle.yaml and fill in your details.
+# vehicle.yaml is gitignored — this example file is what gets committed.
+
+owner:
+  name: Your Name
+  email: your.email@example.com
+
+vehicle:
+  vin: WBAXXXXXXXXXXXXXX
+  year: 2007
+  make: BMW
+  model: 335i
+  body: E93 Convertible           # E.g. E90 Sedan, E92 Coupe, E93 Convertible
+  manufacture_date: 2007-04-01   # Check door jamb sticker; use YYYY-MM-01 if only month is known
+  engine_code: N54                # E.g. N54, N55, N52
+  engine_desc: 3.0L Twin-Turbo Inline-6
+  transmission_code: GS6-53BZ    # E.g. GS6-53BZ (manual), GA6HP19Z (auto)
+  transmission_desc: 6-Speed Manual
+  drive: RWD                      # RWD or xDrive
+  odometer_km: 0                  # Update this when you check the car
+
+preferences:
+  currency: CAD                   # CAD or USD
+  tax_name: GST                   # GST, HST, etc.
+  tax_rate: 0.05                  # 0.05 = 5%
+  preferred_brands:
+    - Elring
+    - "Victor Reinz"
+    - Bosch
+    - INA
+    - Febi
+    - "Genuine BMW"
+  oem_only_systems:               # Systems where cheap aftermarket is not acceptable
+    - "Water Pump"
+    - "Thermostat"

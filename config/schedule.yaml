@@ -1,0 +1,192 @@
+source: "BMW 335i maint km.pdf"
+engine: N54
+unit: km
+version: "1.1b"
+
+items:
+  - id: oil_filter
+    name: Oil & Filter Change
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 12000
+    interval_replace_months: 12        # oil degrades over time even with low mileage
+    bmw_recommendation_km: 24000
+    bmw_recommendation_months: 24
+    notes: "BMW recommends every 24,000 km / 2 years; community recommends every 12,000 km / 1 year"
+    catalog_hint: "Engine > Lubrication System > Oil Filter"
+
+  - id: tires
+    name: Tires
+    interval_inspect_km: 12000
+    interval_inspect_months: 12        # inspect at least yearly
+    interval_replace_km: ~
+    interval_replace_months: ~
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Inspect tread depth, wear pattern, condition, inflation pressure. Replace when below minimums."
+    catalog_hint: ~
+
+  - id: battery
+    name: Battery
+    interval_inspect_km: 24000
+    interval_inspect_months: 24        # inspect every ~2 years
+    interval_replace_km: ~
+    interval_replace_months: ~
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Inspect state of charge every 24,000 km. Replace on failure."
+    catalog_hint: "Electrical > Battery"
+
+  - id: wheel_alignment
+    name: Wheel Alignment
+    interval_inspect_km: 24000
+    interval_inspect_months: 12        # BMW recommends yearly
+    interval_replace_km: ~
+    interval_replace_months: ~
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: 12
+    notes: "BMW recommends yearly and when replacing tires."
+    catalog_hint: ~
+
+  - id: brake_fluid
+    name: Brake Fluid
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 48000
+    interval_replace_months: 30        # every 2.5 years — from PDF
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: 24      # BMW recommends every 2 years
+    notes: "Replace every 48,000 km or every 2.5 years. BMW recommends every 2 years."
+    catalog_hint: "Brakes > Brake Fluid"
+
+  - id: clutch_fluid
+    name: Manual Transmission Clutch Fluid
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 48000
+    interval_replace_months: 30        # same DOT 4 fluid as brakes; same interval is sensible
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Replace every 48,000 km or every 2.5 years. Same DOT 4 fluid as brake circuit."
+    catalog_hint: "Clutch > Clutch Hydraulics"
+
+  - id: interior_air_filter
+    name: Interior Air Filter
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 15000
+    interval_replace_months: 12        # replace at least yearly regardless of km
+    bmw_recommendation_km: 15000
+    bmw_recommendation_months: 12
+    notes: "Replace every 15,000 km or 1 year."
+    catalog_hint: "Heating / Air Conditioning > Microfilter"
+
+  - id: engine_air_filter
+    name: Engine Air Filter
+    interval_inspect_km: 24000
+    interval_inspect_months: 24
+    interval_replace_km: 48000
+    interval_replace_months: 36        # 3 years if low mileage
+    bmw_recommendation_km: 45000
+    bmw_recommendation_months: ~
+    notes: "Inspect every 24,000 km / 2 years. Replace every 48,000 km / 3 years."
+    catalog_hint: "Engine > Air Supply > Air Filter"
+
+  - id: engine_coolant
+    name: Engine Coolant
+    interval_inspect_km: 24000
+    interval_inspect_months: 12        # inspect pH/hydrometer yearly — from PDF
+    interval_replace_km: 48000
+    interval_replace_months: 24        # replace every 2 years — from PDF
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Inspect pH/hydrometer every 24,000 km or yearly. Replace every 48,000 km or 2 years. BMW states lifetime fluid."
+    catalog_hint: "Engine > Cooling System"
+
+  - id: power_steering_fluid
+    name: Power Steering Fluid
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 48000
+    interval_replace_months: 36        # 3 years if low mileage
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Change every 48,000 km or 3 years. BMW states lifetime fluid."
+    catalog_hint: "Steering > Power Steering"
+
+  - id: gearbox_oil
+    name: Manual Transmission Gearbox Oil
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 90000
+    interval_replace_months: 60        # 5 years if low mileage
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Change every 90,000 km or 5 years. BMW states lifetime fluid."
+    catalog_hint: "Manual Transmission"
+
+  - id: differential_oil
+    name: Differential Oil
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 96000
+    interval_replace_months: 60        # 5 years if low mileage
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Change every 96,000 km or 5 years. BMW states lifetime fluid."
+    catalog_hint: "Rear Axle > Differential"
+
+  - id: spark_plugs
+    name: Spark Plugs
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 72000
+    interval_replace_months: 84        # 7 years for iridium/platinum plugs
+    bmw_recommendation_km: 72000
+    bmw_recommendation_months: ~
+    notes: "Replace every 72,000 km or 7 years."
+    catalog_hint: "Engine > Ignition System > Spark Plugs"
+
+  - id: fuel_filter
+    name: Fuel Filter
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 240000
+    interval_replace_months: 120       # 10 years or on failure
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Replace every 240,000 km or 10 years, or on failure. BMW states lifetime filter."
+    catalog_hint: "Fuel Preparation System > Fuel Filter"
+
+  - id: drive_belts
+    name: Engine Drive Belts
+    interval_inspect_km: 24000
+    interval_inspect_months: 24
+    interval_replace_km: 192000
+    interval_replace_months: ~         # no standard time interval; mileage-driven
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Inspect every 24,000 km / 2 years. Replace every 192,000 km."
+    catalog_hint: "Engine > Belt Drive"
+
+  - id: oxygen_sensors
+    name: Oxygen Sensors
+    interval_inspect_km: ~
+    interval_inspect_months: ~
+    interval_replace_km: 192000
+    interval_replace_months: 120       # 10 years or on failure
+    bmw_recommendation_km: 192000
+    bmw_recommendation_months: ~
+    notes: "Replace every 192,000 km or 10 years, or on failure."
+    catalog_hint: "Engine > Exhaust System"
+
+  - id: water_fuel_hoses
+    name: Water and Fuel Hoses
+    interval_inspect_km: 48000
+    interval_inspect_months: 36        # inspect every 3 years
+    interval_replace_km: 240000
+    interval_replace_months: 120       # 10 years
+    bmw_recommendation_km: ~
+    bmw_recommendation_months: ~
+    notes: "Inspect every 48,000 km / 3 years. Replace every 240,000 km / 10 years."
+    catalog_hint: "Engine > Cooling System > Hoses"

@@ -1,0 +1,34 @@
+# ── Python ──────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ── uv ──────────────────────────────────────────────────────
+uv.lock          # commit this if you want reproducible installs; remove line if so
+
+# ── App cache ───────────────────────────────────────────────
+cache/
+
+# ── Personal config (contains VIN, email, odometer) ─────────
+config/vehicle.yaml
+config/service_history.yaml
+
+# schedule.yaml is vehicle-model-specific but not personal —
+# commit it if you want to share your schedule with others,
+# or add it here if you want to keep it private.
+# config/schedule.yaml
+
+# ── Plans and estimates contain personal/financial data ──────
+plans/
+estimates/
+
+# ── OS / editor ─────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp

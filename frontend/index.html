@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BMW Maintenance Helper</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bmw: { blue: '#0066B1', silver: '#A0A0A0' }
+          }
+        }
+      }
+    }
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen" x-data="app()" x-init="init()">
+
+  <!-- ── Header ───────────────────────────────────────────────────────── -->
+  <header class="bg-gray-900 border-b border-gray-800">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-5">
+        <!-- BMW roundel placeholder -->
+        <div class="w-10 h-10 rounded-full border-2 border-bmw-blue flex items-center justify-center">
+          <span class="text-bmw-blue font-black text-xs tracking-widest">BMW</span>
+        </div>
+        <div>
+          <div class="font-semibold text-lg leading-tight"
+               x-text="vehicle.year + ' ' + vehicle.make + ' ' + vehicle.model + ' ' + vehicle.body">
+            Loading…
+          </div>
+          <div class="text-sm text-gray-400 font-mono"
+               x-text="(vehicle.engine_code || '') + '  ·  ' + (vehicle.transmission_code || '') + '  ·  ' + (vehicle.drive || '') + '  ·  VIN: ' + (vehicle.vin || '')">
+          </div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div class="text-2xl font-mono font-bold tabular-nums"
+             x-text="vehicle.odometer_km ? vehicle.odometer_km.toLocaleString() + ' km' : '—'">
+        </div>
+        <div class="text-xs text-gray-500 uppercase tracking-wider">odometer</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Navigation ───────────────────────────────────────────────────── -->
+  <nav class="bg-gray-900 border-b border-gray-800 px-6">
+    <div class="max-w-7xl mx-auto flex gap-0">
+      <template x-for="tab in tabs" :key="tab.id">
+        <button
+          @click="activeTab = tab.id"
+          :class="activeTab === tab.id
+            ? 'border-b-2 border-bmw-blue text-bmw-blue bg-gray-800/50'
+            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'"
+          class="px-5 py-3 text-sm font-medium transition-all"
+          x-text="tab.label">
+        </button>
+      </template>
+    </div>
+  </nav>
+
+  <!-- ── Main Content ──────────────────────────────────────────────────── -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- Dashboard -->
+    <div x-show="activeTab === 'dashboard'" x-cloak>
+
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-semibold">Maintenance Status</h2>
+        <div class="flex items-center gap-6 text-xs text-gray-400">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Overdue</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span> Due soon (&lt;5,000 km)</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span> OK</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-gray-600 inline-block"></span> Unknown</span>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div x-show="loading" class="flex items-center justify-center py-20 text-gray-500">
+        <svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading…
+      </div>
+
+      <!-- Empty -->
+      <div x-show="!loading && scheduleStatus.length === 0" class="text-center py-16">
+        <div class="text-5xl mb-4">🔧</div>
+        <div class="text-gray-400 mb-2">No maintenance schedule loaded.</div>
+        <code class="text-sm bg-gray-800 text-gray-300 px-3 py-1.5 rounded">bmw-helper schedule import &lt;file.pdf&gt;</code>
+      </div>
+
+      <!-- Status table -->
+      <div x-show="!loading && scheduleStatus.length > 0"
+           class="rounded-xl border border-gray-800 overflow-hidden shadow-xl">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-900 text-gray-400 text-xs uppercase tracking-widest">
+              <th class="px-5 py-3 text-left font-medium">Item</th>
+              <th class="px-4 py-3 text-left font-medium">Last Done</th>
+              <th class="px-4 py-3 text-right font-medium">Last km</th>
+              <th class="px-4 py-3 text-right font-medium">Due km</th>
+              <th class="px-4 py-3 text-right font-medium">Due date</th>
+              <th class="px-4 py-3 text-center font-medium">Status</th>
+              <th class="px-4 py-3 text-right font-medium">km</th>
+              <th class="px-4 py-3 text-right font-medium">days</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800/70">
+            <template x-for="s in scheduleStatus" :key="s.item.id">
+              <tr :class="rowBg(s)" class="transition-colors hover:brightness-125">
+                <td class="px-5 py-3 font-medium" x-text="s.item.name"></td>
+                <td class="px-4 py-3 font-mono text-gray-400 text-xs"
+                    x-text="s.last_event ? s.last_event.date : '—'"></td>
+                <td class="px-4 py-3 font-mono text-right text-gray-400 text-xs"
+                    x-text="s.last_event ? s.last_event.odometer_km.toLocaleString() : '—'"></td>
+                <td class="px-4 py-3 font-mono text-right"
+                    x-text="s.next_due_km ? s.next_due_km.toLocaleString() : '—'"></td>
+                <td class="px-4 py-3 font-mono text-right text-xs"
+                    x-text="s.next_due_date ?? '—'"></td>
+                <td class="px-4 py-3 text-center">
+                  <span :class="badgeCls(s)"
+                        class="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide"
+                        x-text="statusLabel(s)">
+                  </span>
+                </td>
+                <!-- km column -->
+                <td class="px-4 py-3 text-right font-mono text-xs">
+                  <span x-show="s.overdue_by_km > 0" class="text-red-400"
+                        x-text="'+' + s.overdue_by_km?.toLocaleString()"></span>
+                  <span x-show="!s.overdue_by_km && s.remaining_km != null" :class="s.status==='due_soon' ? 'text-yellow-400' : 'text-gray-600'"
+                        x-text="s.remaining_km?.toLocaleString()"></span>
+                  <span x-show="s.remaining_km == null && !s.overdue_by_km" class="text-gray-700">—</span>
+                </td>
+                <!-- days column -->
+                <td class="px-4 py-3 text-right font-mono text-xs">
+                  <span x-show="s.overdue_by_days > 0" class="text-red-400"
+                        x-text="'+' + s.overdue_by_days + 'd'"></span>
+                  <span x-show="!s.overdue_by_days && s.remaining_days != null" :class="s.status==='due_soon' ? 'text-yellow-400' : 'text-gray-600'"
+                        x-text="s.remaining_days + 'd'"></span>
+                  <span x-show="s.remaining_days == null && !s.overdue_by_days" class="text-gray-700">—</span>
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <button
+                    x-show="['overdue','due_soon','unknown'].includes(s.status)"
+                    @click="addToPlan(s)"
+                    class="text-xs bg-bmw-blue hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors whitespace-nowrap">
+                    + Plan
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Summary row -->
+      <div x-show="!loading && scheduleStatus.length > 0" class="mt-4 flex gap-6 text-sm text-gray-500">
+        <span>
+          <span class="text-red-400 font-semibold" x-text="countStatus('overdue')"></span> overdue
+        </span>
+        <span>
+          <span class="text-yellow-400 font-semibold" x-text="countStatus('due_soon')"></span> due soon
+        </span>
+        <span>
+          <span class="text-green-400 font-semibold" x-text="countStatus('ok')"></span> ok
+        </span>
+        <span>
+          <span class="text-gray-500 font-semibold" x-text="countStatus('unknown')"></span> unknown
+        </span>
+      </div>
+
+    </div><!-- /dashboard -->
+
+    <!-- Catalog (Phase 3) -->
+    <div x-show="activeTab === 'catalog'" x-cloak class="text-center py-20">
+      <div class="text-5xl mb-4">📖</div>
+      <div class="text-xl font-semibold mb-2">Parts Catalog</div>
+      <div class="text-gray-500">Interactive RealOEM catalog browser — coming in Phase 3</div>
+    </div>
+
+    <!-- Plans (Phase 5) -->
+    <div x-show="activeTab === 'plans'" x-cloak class="text-center py-20">
+      <div class="text-5xl mb-4">📋</div>
+      <div class="text-xl font-semibold mb-2">Service Plans</div>
+      <div class="text-gray-500">Service plan builder — coming in Phase 5</div>
+    </div>
+
+    <!-- Estimates (Phase 7) -->
+    <div x-show="activeTab === 'estimates'" x-cloak class="text-center py-20">
+      <div class="text-5xl mb-4">📄</div>
+      <div class="text-xl font-semibold mb-2">Shop Estimates</div>
+      <div class="text-gray-500">Estimate import and comparison — coming in Phase 7</div>
+    </div>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

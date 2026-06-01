@@ -1,0 +1,35 @@
+# Copy this file to service_history.yaml and update with your actual service records.
+# service_history.yaml is gitignored — this example file is what gets committed.
+#
+# item_id values must match the ids in schedule.yaml.
+# Run: bmw-helper history record <item_id> --km <odometer> --date YYYY-MM-DD --shop "Shop Name"
+
+vehicle_vin: WBAXXXXXXXXXXXXXX
+history:
+  - id: example1
+    item_id: oil_filter
+    date: 2024-01-15
+    odometer_km: 75000
+    performed_by: "Self"
+    parts:
+      - "11427541827"           # OEM filter element
+    notes: "Liqui Moly 5W-30 6L"
+
+  - id: example2
+    item_id: spark_plugs
+    date: 2023-06-01
+    odometer_km: 60000
+    performed_by: "Eurotekk"
+    parts:
+      - "12120037244 NGK 97506"  # part number + brand on same line
+    notes: ~
+
+  - id: example3
+    item_id: valve_cover_gasket
+    date: 2023-06-01
+    odometer_km: 60000
+    performed_by: "Eurotekk"
+    parts:
+      - "11127565286 Elring"     # valve cover gasket
+      - "11127575422 Elring"     # sleeve / spark plug tube seal x6
+    notes: "No warranty — age of vehicle"
