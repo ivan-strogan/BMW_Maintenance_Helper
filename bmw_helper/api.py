@@ -168,6 +168,34 @@ async def rockauto_by_oem(pn: str):
     return {"oem_pn": pn, "count": len(parts), "parts": [p.model_dump() for p in parts]}
 
 
+# ─── AI / Chat ────────────────────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BaseModel
+
+class ChatRequest(_BaseModel):
+    message: str
+    history: list[dict] = []
+
+
+@api.post("/api/ai/chat")
+async def ai_chat(req: ChatRequest):
+    from .ai import get_ai_client
+    client = get_ai_client()
+    result = client.chat(req.message, req.history)
+    return result
+
+
+@api.get("/api/ai/status")
+async def ai_status():
+    """Check whether Ollama is reachable and qwen3:8b is available."""
+    try:
+        from .ai import check_ollama
+        check_ollama()
+        return {"ok": True, "model": "qwen3:8b"}
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 # ─── Static files (last — catch-all) ──────────────────────────────────────────
 
 api.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
