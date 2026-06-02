@@ -34,3 +34,8 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["bmw_helper"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]

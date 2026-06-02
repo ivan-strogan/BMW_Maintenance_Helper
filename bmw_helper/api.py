@@ -31,9 +31,9 @@ async def get_config():
 @api.patch("/api/vehicle/odometer")
 async def update_odometer(odometer_km: int):
     from ruamel.yaml import YAML
-    from pathlib import Path as P
+    from .config import CONFIG_DIR
 
-    path = P(__file__).parent.parent / "config" / "vehicle.yaml"
+    path = CONFIG_DIR / "vehicle.yaml"
     y = YAML()
     y.preserve_quotes = True
     with open(path) as f:
