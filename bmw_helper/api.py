@@ -288,6 +288,23 @@ async def assign_part_endpoint(plan_id: str, body: _AssignPart):
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+# ─── Email Generator ──────────────────────────────────────────────────────────
+
+class _EmailRequest(_PBM):
+    plan_id: str
+    job_ids: list[str] | None = None
+
+
+@api.post("/api/email/generate")
+async def generate_email(body: _EmailRequest):
+    from .email_generator import render_email_for_plan_id
+    try:
+        text = render_email_for_plan_id(body.plan_id, job_ids=body.job_ids)
+        return {"plan_id": body.plan_id, "email": text}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Plan '{body.plan_id}' not found")
+
+
 # ─── AI / Chat ────────────────────────────────────────────────────────────────
 
 from pydantic import BaseModel as _BaseModel

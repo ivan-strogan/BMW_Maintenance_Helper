@@ -1,0 +1,55 @@
+Hello,
+
+I am looking to get a quote for service on my {{ vehicle.year }} BMW {{ vehicle.model }} ({{ vehicle.body }}). I source all my own parts — OEM or equivalent quality from reputable brands ({{ prefs.preferred_brands | join(", ") }}). I would need a labour-only quote for the jobs listed below, with the exception of any consumables you require to be shop-supplied.
+{% if prefs.oem_only_systems %}
+For the following systems I require OEM parts only if the shop needs to supply any: {{ prefs.oem_only_systems | join(", ") }}.
+{% endif %}
+
+---
+VEHICLE
+---
+VIN:           {{ vehicle.vin }}
+Year / Model:  {{ vehicle.year }} BMW {{ vehicle.model }} ({{ vehicle.body }})
+Engine:        {{ vehicle.engine_code }} — {{ vehicle.engine_desc }}
+Transmission:  {{ vehicle.transmission_code }} — {{ vehicle.transmission_desc }}
+Drive:         {{ vehicle.drive }}
+Odometer:      {{ vehicle.odometer_km | format_km }}
+
+---
+WORK REQUESTED
+---
+{% for job in jobs %}
+{{ loop.index }}. {{ job.name }}{% if job.customer_supplied_labour %} [CUSTOMER-SUPPLIED LABOUR]{% endif %}{% if job.no_warranty %} [NO WARRANTY REQUIRED]{% endif %}
+
+{% if job.parts %}
+   Parts (customer-supplied):
+{% for sp in job.parts %}
+   - {{ sp.catalog_part.description }}{% if sp.catalog_part.oem_pn %} -- OEM PN {{ sp.catalog_part.oem_pn }}{% endif %}{% if sp.catalog_part.qty_required > 1 %} x{{ sp.catalog_part.qty_required }}{% endif %}{% if sp.preferred_brand %} [prefer {{ sp.preferred_brand }}]{% endif %}{% if sp.customer_supplied %} [CUSTOMER WILL SUPPLY]{% endif %}
+
+{% endfor %}
+{% endif %}
+{% if job.labour_notes %}
+   Labour notes: {{ job.labour_notes }}
+{% endif %}
+{% if job.overlaps_with %}
+   Note: This job overlaps with job(s) {{ job.overlaps_with | join(", ") }} — teardown labour can be shared.
+{% endif %}
+{% if job.special_instructions %}
+   Special instructions: {{ job.special_instructions }}
+{% endif %}
+{% endfor %}
+{% if ungrouped %}
+---
+ADDITIONAL PARTS (not yet assigned to a specific job)
+---
+{% for sp in ungrouped %}
+- {{ sp.catalog_part.description }}{% if sp.catalog_part.oem_pn %} -- OEM PN {{ sp.catalog_part.oem_pn }}{% endif %}{% if sp.catalog_part.qty_required > 1 %} x{{ sp.catalog_part.qty_required }}{% endif %}
+
+{% endfor %}
+{% endif %}
+---
+
+Please let me know your availability and approximate labour time for each job. I am happy to provide additional part details or diagrams if needed.
+
+Thank you,
+{{ owner.name }}
