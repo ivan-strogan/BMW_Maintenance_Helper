@@ -21,6 +21,7 @@ dependencies = [
     "rich>=13.9.0",
     "anyio>=4.7.0",
     "ollama>=0.4.0",
+    "curl-cffi>=0.15.0",
 ]
 
 [project.scripts]

@@ -95,6 +95,47 @@ async def delete_history_event(event_id: str):
     return {"deleted": event_id}
 
 
+# ─── Catalog ──────────────────────────────────────────────────────────────────
+
+@api.get("/api/catalog/groups")
+async def catalog_groups():
+    from .realoem import get_client
+    cfg = load_app_config()
+    client = get_client()
+    catalog_id = cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+    return {"catalog_id": catalog_id, "groups": client.get_groups(catalog_id)}
+
+
+@api.get("/api/catalog/subgroups")
+async def catalog_subgroups(hg: str, catalog_id: str | None = None):
+    from .realoem import get_client
+    cfg = load_app_config()
+    client = get_client()
+    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+    return {"catalog_id": cat_id, "hg": hg, "subgroups": client.get_subgroups(cat_id, hg)}
+
+
+@api.get("/api/catalog/parts")
+async def catalog_parts(mospid: str, hg: str, fg: str, catalog_id: str | None = None):
+    from .realoem import get_client
+    cfg = load_app_config()
+    client = get_client()
+    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+    parts = client.get_parts(cat_id, mospid=mospid, hg=hg, fg=fg)
+    return {"catalog_id": cat_id, "parts": [p.model_dump() for p in parts]}
+
+
+@api.get("/api/catalog/hint")
+async def catalog_by_hint(hint: str, catalog_id: str | None = None):
+    """Return sub-groups matching a schedule catalog_hint string."""
+    from .realoem import get_client
+    cfg = load_app_config()
+    client = get_client()
+    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+    matches = client.find_by_hint(cat_id, hint)
+    return {"catalog_id": cat_id, "hint": hint, "matches": matches}
+
+
 # ─── Static files (last — catch-all) ──────────────────────────────────────────
 
 api.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

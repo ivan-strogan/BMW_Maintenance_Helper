@@ -28,6 +28,7 @@ class VehicleConfig(BaseModel):
     transmission_desc: str
     drive: str
     odometer_km: int
+    catalog_id: Optional[str] = None  # manual override; auto-resolved from VIN if absent
 
 
 class Preferences(BaseModel):
