@@ -136,6 +136,38 @@ async def catalog_by_hint(hint: str, catalog_id: str | None = None):
     return {"catalog_id": cat_id, "hint": hint, "matches": matches}
 
 
+# ─── RockAuto ─────────────────────────────────────────────────────────────────
+
+@api.get("/api/rockauto/hint")
+async def rockauto_by_hint(hint: str):
+    """Find aftermarket alternatives using a schedule catalog_hint string."""
+    from .rockauto import RockAutoClient
+    cfg = load_app_config()
+    client = RockAutoClient(cfg.vehicle)
+    parts = await client.search_by_hint(hint)
+    return {"hint": hint, "count": len(parts), "parts": [p.model_dump() for p in parts]}
+
+
+@api.get("/api/rockauto/category")
+async def rockauto_by_category(category: str):
+    """Find aftermarket alternatives for a given RockAuto category name."""
+    from .rockauto import RockAutoClient
+    cfg = load_app_config()
+    client = RockAutoClient(cfg.vehicle)
+    parts = await client.search_by_category(category)
+    return {"category": category, "count": len(parts), "parts": [p.model_dump() for p in parts]}
+
+
+@api.get("/api/rockauto/oem")
+async def rockauto_by_oem(pn: str):
+    """Find aftermarket alternatives that cross-reference to an OEM part number."""
+    from .rockauto import RockAutoClient
+    cfg = load_app_config()
+    client = RockAutoClient(cfg.vehicle)
+    parts = await client.search_by_oem(pn)
+    return {"oem_pn": pn, "count": len(parts), "parts": [p.model_dump() for p in parts]}
+
+
 # ─── Static files (last — catch-all) ──────────────────────────────────────────
 
 api.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
