@@ -586,14 +586,47 @@
             </div>
           </div>
 
+          <!-- Add job -->
+          <div class="flex gap-2 mb-4" x-data="{ newJobName: '' }">
+            <input x-model="newJobName" type="text" placeholder="New job name (e.g. Oil Service)"
+                   @keydown.enter="if(newJobName.trim()) { addJob(activePlan.id, newJobName.trim()); newJobName=''; }"
+                   class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-bmw-blue">
+            <button @click="if(newJobName.trim()) { addJob(activePlan.id, newJobName.trim()); newJobName=''; }"
+                    :disabled="!newJobName.trim()"
+                    class="px-3 py-1.5 rounded-lg text-sm bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-bmw-blue disabled:opacity-40 transition-colors">
+              + Add Job
+            </button>
+          </div>
+
           <!-- Jobs -->
           <template x-for="job in activePlan?.jobs" :key="job.id">
-            <div class="mb-3 rounded-xl border border-gray-800 overflow-hidden">
-              <div class="bg-gray-900 px-4 py-2.5 flex items-center justify-between">
-                <span class="font-medium text-sm" x-text="job.name"></span>
-                <div class="flex gap-2 text-xs">
+            <div class="mb-3 rounded-xl border border-gray-800 overflow-hidden"
+                 x-data="{ renaming: false, jobNameEdit: '' }">
+              <div class="bg-gray-900 px-4 py-2.5 flex items-center justify-between gap-2">
+                <!-- Name / rename input -->
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                  <template x-if="!renaming">
+                    <span class="font-medium text-sm truncate" x-text="job.name"></span>
+                  </template>
+                  <template x-if="renaming">
+                    <input x-model="jobNameEdit" type="text"
+                           @keydown.enter="renameJob(activePlan.id, job.id, jobNameEdit); renaming=false"
+                           @keydown.escape="renaming=false"
+                           class="bg-gray-800 border border-bmw-blue rounded px-2 py-0.5 text-sm text-gray-200 focus:outline-none w-48">
+                  </template>
+                  <button x-show="!renaming"
+                          @click="jobNameEdit=job.name; renaming=true"
+                          class="text-gray-600 hover:text-gray-300 text-xs transition-colors shrink-0">&#9998;</button>
+                  <button x-show="renaming"
+                          @click="renameJob(activePlan.id, job.id, jobNameEdit); renaming=false"
+                          class="text-bmw-blue text-xs hover:text-white transition-colors shrink-0">Save</button>
+                </div>
+                <div class="flex items-center gap-3 text-xs shrink-0">
                   <span x-show="job.no_warranty" class="text-yellow-600">No warranty</span>
                   <span x-show="job.customer_supplied_labour" class="text-sky-600">Labour supplied</span>
+                  <button @click="deleteJob(activePlan.id, job.id)"
+                          class="text-gray-600 hover:text-red-400 transition-colors"
+                          title="Delete job (parts return to ungrouped)">&times;</button>
                 </div>
               </div>
               <table class="w-full text-sm" x-show="job.parts.length > 0">
@@ -612,6 +645,11 @@
                       </td>
                       <td class="px-3 py-2 text-right text-xs text-gray-600"
                           x-show="sp.preferred_brand" x-text="sp.preferred_brand"></td>
+                      <td class="px-3 py-2 text-right">
+                        <button @click="unassignPartFromJob(activePlan.id, job.id, sp.catalog_part.oem_pn)"
+                                title="Move back to ungrouped"
+                                class="text-xs text-gray-600 hover:text-yellow-400 transition-colors">&#8617;</button>
+                      </td>
                     </tr>
                   </template>
                 </tbody>

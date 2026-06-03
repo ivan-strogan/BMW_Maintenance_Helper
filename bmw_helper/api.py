@@ -330,6 +330,26 @@ async def update_job_endpoint(plan_id: str, job_id: str, body: _UpdateJob):
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@api.delete("/api/plans/{plan_id}/jobs/{job_id}/parts/{oem_pn}")
+async def unassign_part_endpoint(plan_id: str, job_id: str, oem_pn: str):
+    from .plan import unassign_part_from_job
+    try:
+        plan = unassign_part_from_job(plan_id, oem_pn, job_id)
+        return plan.model_dump(mode="json")
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@api.delete("/api/plans/{plan_id}/jobs/{job_id}")
+async def delete_job_endpoint(plan_id: str, job_id: str):
+    from .plan import delete_job
+    try:
+        plan = delete_job(plan_id, job_id)
+        return plan.model_dump(mode="json")
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @api.post("/api/plans/{plan_id}/assign")
 async def assign_part_endpoint(plan_id: str, body: _AssignPart):
     from .plan import assign_part_to_job

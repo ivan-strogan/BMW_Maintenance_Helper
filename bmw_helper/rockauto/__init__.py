@@ -98,6 +98,17 @@ def _parse_partsearch_results(html: str) -> list[RockAutoAlternative]:
     return results
 
 
+def savings_vs_oem(oem_price: Optional[float], ra_price: float) -> Optional[float]:
+    """Return savings (positive = cheaper on RA, negative = more expensive).
+
+    Returns None when either price is unavailable or RA price is zero
+    (indicating OOS or MAP-priced item where no real comparison is possible).
+    """
+    if oem_price is None or ra_price <= 0:
+        return None
+    return round(oem_price - ra_price, 2)
+
+
 def hint_to_category(hint: str) -> Optional[str]:
     """Map a schedule catalog_hint to a RockAuto category group name.
 

@@ -147,6 +147,50 @@ class TestJobManagement:
         with pytest.raises(ValueError, match="not found"):
             assign_part_to_job(plan.id, "99999999999", job_id)
 
+    def test_unassign_part_returns_to_ungrouped(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_part, add_job, assign_part_to_job, unassign_part_from_job
+        plan = create_plan("Test", "VIN123")
+        add_part(plan.id, "11427541827", description="Filter")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        assign_part_to_job(plan.id, "11427541827", job_id)
+        result = unassign_part_from_job(plan.id, "11427541827", job_id)
+        assert len(result.jobs[0].parts) == 0
+        assert len(result.ungrouped_parts) == 1
+        assert result.ungrouped_parts[0].catalog_part.oem_pn == "11427541827"
+
+    def test_unassign_nonexistent_part_raises(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_job, unassign_part_from_job
+        plan = create_plan("Test", "VIN123")
+        updated = add_job(plan.id, "Job")
+        with pytest.raises(ValueError):
+            unassign_part_from_job(plan.id, "99999999999", updated.jobs[0].id)
+
+    def test_delete_job(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_job, delete_job
+        plan = create_plan("Test", "VIN123")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        result = delete_job(plan.id, job_id)
+        assert len(result.jobs) == 0
+
+    def test_delete_job_returns_parts_to_ungrouped(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_part, add_job, assign_part_to_job, delete_job
+        plan = create_plan("Test", "VIN123")
+        add_part(plan.id, "11427541827", description="Filter")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        assign_part_to_job(plan.id, "11427541827", job_id)
+        result = delete_job(plan.id, job_id)
+        assert len(result.jobs) == 0
+        assert len(result.ungrouped_parts) == 1
+
+    def test_delete_nonexistent_job_raises(self, plans_dir):
+        from bmw_helper.plan import create_plan, delete_job
+        plan = create_plan("Test", "VIN123")
+        with pytest.raises(ValueError):
+            delete_job(plan.id, "badid")
+
 
 class TestPersistence:
     def test_load_returns_same_plan(self, plans_dir):

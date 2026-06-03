@@ -440,6 +440,35 @@ function app() {
       tryNav();
     },
 
+    async deleteJob(planId, jobId) {
+      const res = await fetch(`/api/plans/${planId}/jobs/${jobId}`, { method: 'DELETE' });
+      if (res.ok) this.activePlan = await res.json();
+    },
+
+    async renameJob(planId, jobId, name) {
+      if (!name.trim()) return;
+      const res = await fetch(`/api/plans/${planId}/jobs/${jobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (res.ok) this.activePlan = await res.json();
+    },
+
+    async addJob(planId, name) {
+      const res = await fetch(`/api/plans/${planId}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) this.activePlan = await res.json();
+    },
+
+    async unassignPartFromJob(planId, jobId, oem_pn) {
+      const res = await fetch(`/api/plans/${planId}/jobs/${jobId}/parts/${oem_pn}`, { method: 'DELETE' });
+      if (res.ok) this.activePlan = await res.json();
+    },
+
     async assignPartToJob(planId, oem_pn, jobId) {
       if (!jobId) return;
       const res = await fetch(`/api/plans/${planId}/assign`, {

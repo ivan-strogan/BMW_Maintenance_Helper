@@ -206,6 +206,29 @@ def update_job(
     return plan
 
 
+def delete_job(plan_id: str, job_id: str) -> ServicePlan:
+    """Delete a job, returning its parts to ungrouped."""
+    plan = load_plan(plan_id)
+    job = _find_job(plan, job_id)
+    plan.ungrouped_parts.extend(job.parts)
+    plan.jobs = [j for j in plan.jobs if j.id != job_id]
+    save_plan(plan)
+    return plan
+
+
+def unassign_part_from_job(plan_id: str, oem_pn: str, job_id: str) -> ServicePlan:
+    """Move a part from a job back to ungrouped_parts."""
+    plan = load_plan(plan_id)
+    job = _find_job(plan, job_id)
+    part = next((p for p in job.parts if p.catalog_part.oem_pn == oem_pn), None)
+    if part is None:
+        raise ValueError(f"Part '{oem_pn}' not found in job '{job_id}'")
+    job.parts.remove(part)
+    plan.ungrouped_parts.append(part)
+    save_plan(plan)
+    return plan
+
+
 def assign_part_to_job(plan_id: str, oem_pn: str, job_id: str) -> ServicePlan:
     """Move a part from ungrouped_parts into the specified job."""
     plan = load_plan(plan_id)

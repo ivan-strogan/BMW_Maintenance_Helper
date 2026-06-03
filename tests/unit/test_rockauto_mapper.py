@@ -96,6 +96,84 @@ class TestParsePartsearchResults:
     def test_empty_html_returns_empty(self):
         assert _parse_partsearch_results("<html><body></body></html>") == []
 
+    def test_oos_price_is_zero(self):
+        """Out-of-stock parts must have price=0 so frontend filter excludes them."""
+        html = _make_row("URO PARTS", "11117530262",
+                         '<span class="oos-price-text">Out of Stock</span>')
+        r = _parse_partsearch_results(html)[0]
+        assert r.price == 0.0
+        assert r.availability == "out_of_stock"
+
+    def test_map_price_is_zero(self):
+        """MAP (add-to-cart) parts must have price=0 so frontend filter excludes them."""
+        html = _make_row("BILSTEIN", "35120377",
+                         '<span class="map-price-text">Add to Cart to See Price</span>')
+        r = _parse_partsearch_results(html)[0]
+        assert r.price == 0.0
+        assert r.availability == "map_price"
+
+    def test_only_priced_items_have_positive_price(self):
+        """Mixed list: only in-stock priced items should have price > 0."""
+        html = (
+            _make_row("CHAMP", "P969", "CAD$2.49") +
+            _make_row("URO", "U0001234", '<span class="oos-price-text">Out of Stock</span>') +
+            _make_row("BILSTEIN", "B9999999", '<span class="map-price-text">Add to Cart to See Price</span>') +
+            _make_row("MANN", "HU816X", "CAD$10.30")
+        )
+        results = _parse_partsearch_results(html)
+        priced = [r for r in results if r.price > 0]
+        assert len(priced) == 2
+        assert all(r.availability == "in_stock" for r in priced)
+
+    def test_results_ordered_cheapest_first(self):
+        """RockAuto returns results sorted by price ascending on their site."""
+        html = (
+            _make_row("CHAMP", "P969", "CAD$2.49") +
+            _make_row("MAHLE", "OX387D", "CAD$5.21") +
+            _make_row("MANN", "HU816X", "CAD$10.30")
+        )
+        results = _parse_partsearch_results(html)
+        prices = [r.price for r in results if r.price > 0]
+        assert prices == sorted(prices)
+
+    def test_large_price_with_comma(self):
+        html = _make_row("BILSTEIN", "B4567890", "CAD$1,234.56")
+        results = _parse_partsearch_results(html)
+        assert results[0].price == pytest.approx(1234.56)
+
+    def test_price_with_cad_prefix(self):
+        """CAD$ prefix must be stripped correctly by _parse_price."""
+        assert _parse_price("CAD$49.99") == pytest.approx(49.99)
+
+    def test_price_zero_string(self):
+        assert _parse_price("CAD$0.00") == pytest.approx(0.0)
+
+
+# ── savings_vs_oem ────────────────────────────────────────────────────────────
+
+class TestSavingsVsOem:
+    """Tests for the savings calculation helper used by the frontend."""
+
+    def _savings(self, oem_usd: float, ra_cad: float) -> float | None:
+        from bmw_helper.rockauto import savings_vs_oem
+        return savings_vs_oem(oem_usd, ra_cad)
+
+    def test_positive_savings(self):
+        assert self._savings(50.00, 30.00) == pytest.approx(20.00)
+
+    def test_negative_savings_when_ra_more_expensive(self):
+        assert self._savings(10.00, 15.00) == pytest.approx(-5.00)
+
+    def test_zero_savings_when_equal(self):
+        assert self._savings(25.00, 25.00) == pytest.approx(0.00)
+
+    def test_none_when_oem_price_missing(self):
+        assert self._savings(None, 10.00) is None
+
+    def test_none_when_ra_price_zero(self):
+        """Zero RA price means OOS or MAP — no meaningful savings to show."""
+        assert self._savings(50.00, 0.00) is None
+
 
 class TestHintToCategory:
     def test_engine_hint(self):
