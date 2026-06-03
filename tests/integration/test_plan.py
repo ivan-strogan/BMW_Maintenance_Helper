@@ -267,3 +267,52 @@ class TestPlanAPI:
         data = res.json()
         assert data["ungrouped_parts"] == []
         assert len(data["jobs"][0]["parts"]) == 1
+
+    def test_rename_plan(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Old Name"}).json()
+        res = plan_client.patch(f"/api/plans/{plan['id']}", json={"name": "New Name"})
+        assert res.status_code == 200
+        assert res.json()["name"] == "New Name"
+
+    def test_rename_plan_persists(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Old Name"}).json()
+        plan_client.patch(f"/api/plans/{plan['id']}", json={"name": "Renamed"})
+        fetched = plan_client.get(f"/api/plans/{plan['id']}").json()
+        assert fetched["name"] == "Renamed"
+
+    def test_rename_nonexistent_plan_returns_404(self, plan_client):
+        res = plan_client.patch("/api/plans/doesnotexist", json={"name": "X"})
+        assert res.status_code == 404
+
+    def test_update_part_qty(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827", "description": "Oil Filter", "qty": 1,
+        })
+        res = plan_client.patch(f"/api/plans/{plan['id']}/parts/11427541827?qty=3")
+        assert res.status_code == 200
+        part = res.json()["ungrouped_parts"][0]
+        assert part["catalog_part"]["qty_required"] == 3
+
+    def test_update_part_qty_invalid_returns_400(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827", "description": "Oil Filter",
+        })
+        res = plan_client.patch(f"/api/plans/{plan['id']}/parts/11427541827?qty=0")
+        assert res.status_code == 400
+
+    def test_add_part_stores_catalog_metadata(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        res = plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827",
+            "description": "Oil Filter",
+            "catalog_path": ["11_3971"],
+            "diagram_url": "https://www.realoem.com/bmw/images/diag_abc.jpg",
+            "diagram_ref": "03",
+        })
+        assert res.status_code == 201
+        cp = res.json()["ungrouped_parts"][0]["catalog_part"]
+        assert cp["catalog_path"] == ["11_3971"]
+        assert cp["diagram_url"] == "https://www.realoem.com/bmw/images/diag_abc.jpg"
+        assert cp["diagram_ref"] == "03"

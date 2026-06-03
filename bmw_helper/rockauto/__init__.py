@@ -1,7 +1,10 @@
 """RockAuto aftermarket parts integration.
 
-Wraps the rockauto-api library (github.com/rsp2k/rockauto-api) which handles
-the internal catalogapi.php HTTP protocol. Results are cached with diskcache.
+search_by_oem: direct curl-cffi scraper of /en/partsearch/ — works for any
+  OEM part number and returns CAD prices regardless of vehicle.
+
+search_by_category / search_by_hint: uses rockauto-api library which scrapes
+  the vehicle+category catalog. Results are cached with diskcache.
 """
 
 from __future__ import annotations
@@ -11,6 +14,8 @@ from pathlib import Path
 from typing import Optional
 
 import diskcache
+from bs4 import BeautifulSoup
+from curl_cffi import requests as cffi_requests
 from rockauto_api import RockAutoClient as _RAClient
 
 from ..models import RockAutoAlternative, VehicleConfig
@@ -37,6 +42,60 @@ HINT_TO_CATEGORY: dict[str, str] = {
     "exhaust": "Exhaust & Emission",
     "ignition": "Ignition",
 }
+
+
+def _parse_partsearch_results(html: str) -> list[RockAutoAlternative]:
+    """Parse the HTML response from RockAuto's /en/partsearch/ form POST."""
+    soup = BeautifulSoup(html, "html.parser")
+    results: list[RockAutoAlternative] = []
+
+    for mfr_span in soup.find_all("span", class_="listing-final-manufacturer"):
+        brand = mfr_span.get_text(strip=True)
+        pn_span = mfr_span.find_next("span", class_="listing-final-partnumber")
+        if not pn_span:
+            continue
+        pn = pn_span.get_text(strip=True)
+        if not pn or pn == "Unknown":
+            continue
+
+        # Description is the next text span after the part number
+        desc_span = pn_span.find_next("span", class_="span-link-underline-remover")
+        notes = desc_span.get_text(strip=True) if desc_span else None
+
+        # Price span and availability are in the same row
+        row = mfr_span.find_parent("tr") or mfr_span.find_parent(
+            "div", class_=re.compile(r"listing")
+        )
+        price: Optional[float] = None
+        availability = "in_stock"
+        url = ""
+        if row:
+            price_span = row.find("span", class_=re.compile(r"price|listing-price"))
+            if price_span:
+                oos = price_span.find("span", class_="oos-price-text")
+                map_price = price_span.find("span", class_="map-price-text")
+                if oos:
+                    availability = "out_of_stock"
+                elif map_price:
+                    availability = "map_price"  # price hidden — add to cart to see
+                else:
+                    price = _parse_price(price_span.get_text(strip=True))
+            link = row.find("a", href=re.compile(r"rockauto"))
+            if link:
+                url = link["href"]
+
+        results.append(RockAutoAlternative(
+            brand=brand,
+            part_number=pn,
+            oem_interchange=[],
+            price=price or 0.0,
+            currency="CAD",
+            availability=availability,
+            url=url,
+            notes=notes,
+        ))
+
+    return results
 
 
 def hint_to_category(hint: str) -> Optional[str]:
@@ -123,8 +182,8 @@ class RockAutoClient:
             return self._cache[cache_key]
 
         async with _RAClient() as client:
-            vehicle = await client.get_vehicle(v.make, v.year, v.model.upper())
-            result = await vehicle.get_parts_by_category(category)
+            vehicle = await client.get_vehicle(v.make, v.year, v.model)
+            result = await client.get_parts_by_category(v.make, v.year, v.model, vehicle.carcode, category)
 
         parts = [
             alt for part in result.parts
@@ -133,18 +192,42 @@ class RockAutoClient:
         self._cache.set(cache_key, parts, expire=CACHE_TTL)
         return parts
 
-    async def search_by_oem(self, oem_pn: str) -> list[RockAutoAlternative]:
-        """Find aftermarket parts that cross-reference to a given OEM part number."""
+    def search_by_oem(self, oem_pn: str) -> list[RockAutoAlternative]:
+        """Find aftermarket parts that cross-reference to a given OEM part number.
+
+        Uses direct HTML scraping of RockAuto's part-number search form.
+        Returns CAD prices (the currency RockAuto shows to Canadian visitors).
+        """
         cache_key = f"ra:oem:{oem_pn}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        async with _RAClient() as client:
-            result = await client.search_parts_by_number(oem_pn)
+        session = cffi_requests.Session(impersonate="chrome120")
+        session.headers.update({
+            "Accept-Language": "en-CA,en;q=0.9",
+            "Referer": "https://www.rockauto.com/",
+        })
 
-        parts = [
-            alt for part in result.parts
-            if (alt := _part_to_alternative(part)) is not None
-        ]
+        # Fetch the search page to get the _nck security token
+        r1 = session.get("https://www.rockauto.com/en/partsearch/", timeout=20)
+        nck_inp = BeautifulSoup(r1.text, "html.parser").find("input", {"name": "_nck"})
+        if not nck_inp:
+            return []
+
+        r2 = session.post("https://www.rockauto.com/en/partsearch/", data={
+            "_nck": nck_inp["value"],
+            "dopartsearch": "1",
+            "partsearch[partnum][partsearch_007]": oem_pn,
+            "partsearch[manufacturer][partsearch_007]": "",
+            "partsearch[partgroup][partsearch_007]": "",
+            "partsearch[parttype][partsearch_007]": "",
+            "partsearch[partname][partsearch_007]": "",
+            "partsearch[do][partsearch_007]": "Search",
+        }, headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": "https://www.rockauto.com/en/partsearch/",
+        }, timeout=20)
+
+        parts = _parse_partsearch_results(r2.text)
         self._cache.set(cache_key, parts, expire=CACHE_TTL)
         return parts

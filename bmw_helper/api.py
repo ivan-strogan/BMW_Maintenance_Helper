@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -97,43 +100,60 @@ async def delete_history_event(event_id: str):
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+def _get_catalog_id(client, cfg) -> str:
+    """Resolve catalog ID from config override or VIN lookup."""
+    return cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+
+
 @api.get("/api/catalog/groups")
 async def catalog_groups():
     from .realoem import get_client
-    cfg = load_app_config()
-    client = get_client()
-    catalog_id = cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
-    return {"catalog_id": catalog_id, "groups": client.get_groups(catalog_id)}
+    try:
+        cfg = load_app_config()
+        client = get_client()
+        catalog_id = _get_catalog_id(client, cfg)
+        return {"catalog_id": catalog_id, "groups": client.get_groups(catalog_id)}
+    except Exception as exc:
+        logger.exception("catalog_groups failed")
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @api.get("/api/catalog/subgroups")
-async def catalog_subgroups(hg: str, catalog_id: str | None = None):
+async def catalog_subgroups(mg: str, catalog_id: str | None = None):
     from .realoem import get_client
-    cfg = load_app_config()
-    client = get_client()
-    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
-    return {"catalog_id": cat_id, "hg": hg, "subgroups": client.get_subgroups(cat_id, hg)}
+    try:
+        cfg = load_app_config()
+        client = get_client()
+        cat_id = catalog_id or _get_catalog_id(client, cfg)
+        return {"catalog_id": cat_id, "mg": mg, "subgroups": client.get_subgroups(cat_id, mg)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @api.get("/api/catalog/parts")
-async def catalog_parts(mospid: str, hg: str, fg: str, catalog_id: str | None = None):
+async def catalog_parts(diag_id: str, catalog_id: str | None = None):
     from .realoem import get_client
-    cfg = load_app_config()
-    client = get_client()
-    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
-    parts = client.get_parts(cat_id, mospid=mospid, hg=hg, fg=fg)
-    return {"catalog_id": cat_id, "parts": [p.model_dump() for p in parts]}
+    try:
+        cfg = load_app_config()
+        client = get_client()
+        cat_id = catalog_id or _get_catalog_id(client, cfg)
+        parts, diagram_url = client.get_parts(cat_id, diag_id=diag_id)
+        return {"catalog_id": cat_id, "diag_id": diag_id, "diagram_url": diagram_url, "parts": [p.model_dump() for p in parts]}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @api.get("/api/catalog/hint")
 async def catalog_by_hint(hint: str, catalog_id: str | None = None):
-    """Return sub-groups matching a schedule catalog_hint string."""
     from .realoem import get_client
-    cfg = load_app_config()
-    client = get_client()
-    cat_id = catalog_id or cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
-    matches = client.find_by_hint(cat_id, hint)
-    return {"catalog_id": cat_id, "hint": hint, "matches": matches}
+    try:
+        cfg = load_app_config()
+        client = get_client()
+        cat_id = catalog_id or _get_catalog_id(client, cfg)
+        matches = client.find_by_hint(cat_id, hint)
+        return {"catalog_id": cat_id, "hint": hint, "matches": matches}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 # ─── RockAuto ─────────────────────────────────────────────────────────────────
@@ -164,7 +184,7 @@ async def rockauto_by_oem(pn: str):
     from .rockauto import RockAutoClient
     cfg = load_app_config()
     client = RockAutoClient(cfg.vehicle)
-    parts = await client.search_by_oem(pn)
+    parts = client.search_by_oem(pn)  # sync scraper
     return {"oem_pn": pn, "count": len(parts), "parts": [p.model_dump() for p in parts]}
 
 
@@ -183,6 +203,9 @@ class _AddPart(_PBM):
     notes: str | None = None
     customer_supplied: bool = False
     job_id: str | None = None
+    catalog_path: list[str] = []
+    diagram_url: str | None = None
+    diagram_ref: str | None = None
 
 class _NewJob(_PBM):
     name: str
@@ -228,6 +251,23 @@ async def get_plan_endpoint(plan_id: str):
         raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' not found")
 
 
+class _RenamePlan(_PBM):
+    name: str
+
+
+@api.patch("/api/plans/{plan_id}")
+async def rename_plan_endpoint(plan_id: str, body: _RenamePlan):
+    from .plan import rename_plan
+    name = body.name
+    try:
+        plan = rename_plan(plan_id, name)
+        return plan.model_dump(mode="json")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @api.delete("/api/plans/{plan_id}")
 async def delete_plan_endpoint(plan_id: str):
     from .plan import delete_plan
@@ -246,6 +286,18 @@ async def add_part_endpoint(plan_id: str, body: _AddPart):
         return plan.model_dump(mode="json")
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@api.patch("/api/plans/{plan_id}/parts/{oem_pn}")
+async def update_part_qty_endpoint(plan_id: str, oem_pn: str, qty: int):
+    from .plan import update_part_qty
+    try:
+        plan = update_part_qty(plan_id, oem_pn, qty)
+        return plan.model_dump(mode="json")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @api.delete("/api/plans/{plan_id}/parts/{oem_pn}")

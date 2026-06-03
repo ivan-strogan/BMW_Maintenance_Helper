@@ -8,3 +8,16 @@ body {
 code, .font-mono {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
 }
+
+/* Markdown rendered inside chat bubbles */
+.chat-prose strong { font-weight: 600; color: #e5e7eb; }
+.chat-prose em { font-style: italic; }
+.chat-prose p { margin: 0.4em 0; }
+.chat-prose p:first-child { margin-top: 0; }
+.chat-prose p:last-child  { margin-bottom: 0; }
+.chat-prose ul, .chat-prose ol { padding-left: 1.25em; margin: 0.4em 0; }
+.chat-prose li { margin: 0.2em 0; }
+.chat-prose code { background: rgba(255,255,255,0.08); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.85em; font-family: 'SF Mono', 'Fira Code', monospace; }
+.chat-prose pre  { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0.75em 1em; overflow-x: auto; margin: 0.5em 0; }
+.chat-prose pre code { background: none; padding: 0; }
+.chat-prose h1,.chat-prose h2,.chat-prose h3 { font-weight: 600; margin: 0.5em 0 0.25em; color: #f3f4f6; }

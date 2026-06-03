@@ -8,8 +8,93 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock
 
-from bmw_helper.rockauto import hint_to_category, _parse_price, _part_to_alternative
+from bmw_helper.rockauto import hint_to_category, _parse_price, _part_to_alternative, _parse_partsearch_results
 from bmw_helper.models import RockAutoAlternative
+
+
+# ── _parse_partsearch_results ─────────────────────────────────────────────────
+
+def _partsearch_html(rows: str) -> str:
+    """Wrap rows in minimal RealOEM-style partsearch HTML."""
+    return f"""<html><body>
+    <tr>
+      <span class="listing-final-manufacturer">{{}}</span>
+    </tr>
+    {rows}
+    </body></html>"""
+
+
+def _make_row(brand: str, pn: str, price_html: str, notes: str = "") -> str:
+    return f"""<tr>
+      <span class="listing-final-manufacturer">{brand}</span>
+      <span class="listing-final-partnumber as-link-if-js">{pn}</span>
+      <span class="span-link-underline-remover">{notes}</span>
+      <span class="ra-formatted-amount listing-price listing-amount-bold">
+        <span id="dprice[1][v]">{price_html}</span>
+      </span>
+      <a href="https://www.rockauto.com/en/moreinfo.php?pk=123">Info</a>
+    </tr>"""
+
+
+class TestParsePartsearchResults:
+    def test_parses_brand_and_pn(self):
+        html = _make_row("MAHLE / CLEVITE", "OX387D", "CAD$5.21")
+        results = _parse_partsearch_results(html)
+        assert len(results) == 1
+        assert results[0].brand == "MAHLE / CLEVITE"
+        assert results[0].part_number == "OX387D"
+
+    def test_parses_cad_price(self):
+        html = _make_row("MANN", "HU816X", "CAD$10.30")
+        results = _parse_partsearch_results(html)
+        assert results[0].price == pytest.approx(10.30)
+        assert results[0].currency == "CAD"
+
+    def test_parses_notes(self):
+        html = _make_row("MAHLE", "OX387D", "CAD$5.21", notes="79mm Height; O-ring Included")
+        results = _parse_partsearch_results(html)
+        assert results[0].notes == "79mm Height; O-ring Included"
+
+    def test_out_of_stock_detected(self):
+        html = _make_row("URO PARTS", "11117530262",
+                         '<span class="oos-price-text">Out of Stock</span>')
+        results = _parse_partsearch_results(html)
+        assert results[0].availability == "out_of_stock"
+        assert results[0].price == 0.0
+
+    def test_map_price_detected(self):
+        html = _make_row("BILSTEIN", "35120377",
+                         '<span class="map-price-text">Add to Cart to See Price</span>')
+        results = _parse_partsearch_results(html)
+        assert results[0].availability == "map_price"
+        assert results[0].price == 0.0
+
+    def test_in_stock_availability(self):
+        html = _make_row("CHAMP", "P969", "CAD$2.49")
+        results = _parse_partsearch_results(html)
+        assert results[0].availability == "in_stock"
+
+    def test_skips_unknown_part_numbers(self):
+        html = _make_row("SOME BRAND", "Unknown", "CAD$5.00")
+        results = _parse_partsearch_results(html)
+        assert results == []
+
+    def test_captures_moreinfo_url(self):
+        html = _make_row("MAHLE", "OX387D", "CAD$5.21")
+        results = _parse_partsearch_results(html)
+        assert "rockauto.com" in results[0].url
+
+    def test_multiple_parts_parsed(self):
+        html = (
+            _make_row("CHAMP", "P969", "CAD$2.49") +
+            _make_row("MANN", "HU816X", "CAD$10.30") +
+            _make_row("MAHLE", "OX387D", "CAD$5.21")
+        )
+        results = _parse_partsearch_results(html)
+        assert len(results) == 3
+
+    def test_empty_html_returns_empty(self):
+        assert _parse_partsearch_results("<html><body></body></html>") == []
 
 
 class TestHintToCategory:

@@ -53,13 +53,19 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "search_catalog",
-            "description": "Search the RealOEM parts catalog for a given natural-language query or catalog hint (e.g. 'Engine > Oil Filter'). Returns matching catalog groups.",
+            "description": (
+                "Search the RealOEM parts catalog for OEM parts. "
+                "Use 'Group > Subgroup' format for best results, e.g. 'Brakes > Front Brake Pads', "
+                "'Engine > Oil Filter', 'Radiator > Cooling System Water Hoses'. "
+                "The group name should match a RealOEM top-level group (ENGINE, BRAKES, RADIATOR, etc.). "
+                "Returns matching diagram sub-groups with diag_id values."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "hint": {
                         "type": "string",
-                        "description": "Catalog hint string or natural language part description.",
+                        "description": "Hint in 'Group > Subgroup' format, e.g. 'Brakes > Front Brake Pads'. Use the RealOEM group name as the first segment.",
                     }
                 },
                 "required": ["hint"],
@@ -93,6 +99,68 @@ TOOLS: list[dict] = [
             "name": "get_overdue_items",
             "description": "Return only the maintenance items that are currently overdue or due soon, sorted by urgency.",
             "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_plans",
+            "description": "List all existing service plans by name and ID. Call this before creating a plan to check if one already exists.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_plan",
+            "description": "Create a new service plan with a given name. Returns the plan_id needed for add_parts_to_plan.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "A short descriptive name for the plan, e.g. 'Front Brake Service' or 'Oil Change Spring 2026'.",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_parts_to_plan",
+            "description": (
+                "Add one or more OEM parts to a service plan. "
+                "Call search_catalog first to find the diag_id, then fetch the parts list. "
+                "Each part needs oem_pn and description at minimum. "
+                "Always add parts from the same diagram in a single call."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_id": {
+                        "type": "string",
+                        "description": "The plan ID returned by create_plan or list_plans.",
+                    },
+                    "parts": {
+                        "type": "array",
+                        "description": "List of parts to add.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "oem_pn":      {"type": "string", "description": "11-digit OEM part number."},
+                                "description": {"type": "string", "description": "Part description."},
+                                "qty":         {"type": "integer", "description": "Quantity needed.", "default": 1},
+                                "diagram_ref": {"type": "string", "description": "Position number in the diagram (e.g. '01')."},
+                                "diag_id":     {"type": "string", "description": "Diagram ID (e.g. '34_0123') from search_catalog."},
+                            },
+                            "required": ["oem_pn", "description"],
+                        },
+                    },
+                },
+                "required": ["plan_id", "parts"],
+            },
         },
     },
 ]
@@ -190,26 +258,85 @@ def search_catalog(hint: str) -> dict:
 
 
 def get_rockauto_alternatives(oem_pn: str | None = None, hint: str | None = None) -> list[dict]:
-    """Synchronous wrapper for the async RockAuto client."""
+    """Return RockAuto aftermarket alternatives by OEM PN or catalog hint."""
     import asyncio
     from .rockauto import RockAutoClient
 
     cfg = load_app_config()
     client = RockAutoClient(cfg.vehicle)
 
-    async def _fetch():
-        if oem_pn:
-            return await client.search_by_oem(oem_pn)
-        if hint:
-            return await client.search_by_hint(hint)
-        return []
-
     try:
-        parts = asyncio.run(_fetch())
+        if oem_pn:
+            # sync scraper — no event loop needed
+            parts = client.search_by_oem(oem_pn)
+        elif hint:
+            parts = asyncio.run(client.search_by_hint(hint))
+        else:
+            parts = []
     except Exception as exc:
         return [{"error": str(exc)}]
 
     return [p.model_dump() for p in parts]
+
+
+def list_plans() -> list[dict]:
+    from .plan import list_plans as _list_plans
+    plans = _list_plans()
+    return [{"id": p.id, "name": p.name, "parts": len(p.ungrouped_parts), "jobs": len(p.jobs)} for p in plans]
+
+
+def create_plan(name: str) -> dict:
+    from .plan import create_plan as _create_plan
+    cfg = load_app_config()
+    plan = _create_plan(name, cfg.vehicle.vin)
+    return {"plan_id": plan.id, "name": plan.name, "message": f"Plan '{name}' created successfully."}
+
+
+def add_parts_to_plan(plan_id: str, parts: list[dict]) -> dict:
+    from .plan import add_part
+    from .realoem import get_client
+
+    cfg = load_app_config()
+    added = []
+    errors = []
+
+    for p in parts:
+        oem_pn = p.get("oem_pn", "").strip()
+        if not oem_pn:
+            continue
+
+        # Resolve diagram_url from diag_id if provided
+        diagram_url = None
+        diag_id = p.get("diag_id")
+        if diag_id:
+            try:
+                client = get_client()
+                cat_id = cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+                fetched_parts, diagram_url = client.get_parts(cat_id, diag_id)
+                # Fill in diagram_url on individual part if not already set
+            except Exception:
+                pass
+
+        try:
+            add_part(
+                plan_id,
+                oem_pn=oem_pn,
+                description=p.get("description", ""),
+                qty=int(p.get("qty", 1)),
+                diagram_ref=p.get("diagram_ref"),
+                catalog_path=[diag_id] if diag_id else [],
+                diagram_url=diagram_url,
+            )
+            added.append(oem_pn)
+        except Exception as exc:
+            errors.append(f"{oem_pn}: {exc}")
+
+    return {
+        "plan_id": plan_id,
+        "added": added,
+        "errors": errors,
+        "message": f"Added {len(added)} part(s) to plan." + (f" Errors: {errors}" if errors else ""),
+    }
 
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
@@ -221,6 +348,9 @@ TOOL_REGISTRY: dict[str, Any] = {
     "get_overdue_items": lambda **_: get_overdue_items(),
     "search_catalog": lambda hint="", **_: search_catalog(hint),
     "get_rockauto_alternatives": lambda oem_pn=None, hint=None, **_: get_rockauto_alternatives(oem_pn, hint),
+    "list_plans": lambda **_: list_plans(),
+    "create_plan": lambda name="", **_: create_plan(name),
+    "add_parts_to_plan": lambda plan_id="", parts=None, **_: add_parts_to_plan(plan_id, parts or []),
 }
 
 
