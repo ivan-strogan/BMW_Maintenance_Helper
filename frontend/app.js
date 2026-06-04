@@ -151,7 +151,7 @@ function app() {
       const msg = this.chatInput.trim();
       if (!msg || this.chatLoading) return;
       this.chatInput = '';
-      this.chatMessages.push({ role: 'user', content: msg });
+      this.chatMessages.push({ role: 'user', content: msg, ts: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
       this.chatLoading = true;
 
       // Build history for the API (exclude tool_calls field)
@@ -173,6 +173,7 @@ function app() {
           thinking: data.thinking || '',
           tool_calls: data.tool_calls || [],
           toolsOpen: {},
+          ts: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
         });
       } catch (e) {
         this.chatMessages.push({

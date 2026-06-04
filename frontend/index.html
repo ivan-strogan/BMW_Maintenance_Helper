@@ -785,6 +785,10 @@
                  class="bg-gray-800/40 text-gray-200 rounded-xl rounded-tl-sm px-3 py-2 max-w-[95%] text-sm chat-prose"
                  x-html="marked.parse(msg.content || '')"></div>
           </div>
+          <div x-show="msg.ts"
+               :class="msg.role === 'user' ? 'text-right pr-1' : 'pl-1'"
+               class="text-xs text-gray-700 mt-0.5"
+               x-text="msg.ts"></div>
         </div>
       </template>
 
@@ -971,6 +975,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>
