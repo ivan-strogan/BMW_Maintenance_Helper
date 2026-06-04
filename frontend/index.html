@@ -14,6 +14,7 @@
       }
     }
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -35,6 +36,20 @@
                x-text="(vehicle.engine_code||'') + '  .  ' + (vehicle.transmission_code||'') + '  .  ' + (vehicle.drive||'') + '  .  VIN: ' + (vehicle.vin||'')">
           </div>
         </div>
+      </div>
+
+      <!-- AI status + chat toggle -->
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5 text-xs text-gray-500">
+          <span :class="aiOk === true ? 'bg-green-400' : aiOk === false ? 'bg-red-500' : 'bg-gray-600'"
+                class="w-2 h-2 rounded-full inline-block"></span>
+          <span x-text="aiOk === true ? 'AI ready' : aiOk === false ? 'AI offline' : 'AI...'"></span>
+        </div>
+        <button @click="chatOpen = !chatOpen"
+                :class="chatOpen ? 'bg-bmw-blue text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'"
+                class="text-xs px-3 py-1.5 rounded transition-colors font-medium">
+          AI Chat
+        </button>
       </div>
 
       <!-- Odometer display + inline edit -->
@@ -64,7 +79,7 @@
   <nav class="bg-gray-900 border-b border-gray-800 px-6">
     <div class="max-w-7xl mx-auto flex gap-0">
       <template x-for="tab in tabs" :key="tab.id">
-        <button @click="activeTab = tab.id"
+        <button @click="onTabChange(tab.id)"
                 :class="activeTab === tab.id
                   ? 'border-b-2 border-bmw-blue text-bmw-blue bg-gray-800/50'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'"
@@ -262,28 +277,618 @@
       </div>
     </div><!-- /dashboard -->
 
-    <!-- Catalog (Phase 3) -->
-    <div x-show="activeTab === 'catalog'" x-cloak class="text-center py-20">
-      <div class="text-5xl mb-4">📖</div>
-      <div class="text-xl font-semibold mb-2">Parts Catalog</div>
-      <div class="text-gray-500">RealOEM catalog browser — coming in Phase 3</div>
-    </div>
+    <!-- ── Catalog tab ──────────────────────────────────────────────────── -->
+    <div x-show="activeTab === 'catalog'" x-cloak>
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-semibold">Parts Catalog</h2>
+        <div class="flex items-center gap-3">
+          <div class="text-xs text-gray-500" x-show="catalogId" x-text="'Catalog: ' + catalogId"></div>
+          <!-- Plan target selector -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500 whitespace-nowrap">Add to service plan:</span>
+            <select x-model="catalogTargetPlanId"
+                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-bmw-blue">
+              <option value="" disabled :selected="!catalogTargetPlanId">Select a plan...</option>
+              <template x-for="p in plansList" :key="p.id">
+                <option :value="p.id" x-text="p.name"></option>
+              </template>
+            </select>
+            <span x-show="plansList.length === 0" class="text-xs text-gray-600">
+              No plans yet — create one in the Plans tab
+            </span>
+          </div>
+        </div>
+      </div>
 
-    <!-- Plans (Phase 5) -->
-    <div x-show="activeTab === 'plans'" x-cloak class="text-center py-20">
-      <div class="text-5xl mb-4">📋</div>
-      <div class="text-xl font-semibold mb-2">Service Plans</div>
-      <div class="text-gray-500">Service plan builder — coming in Phase 5</div>
-    </div>
+      <!-- Error -->
+      <div x-show="catalogError" class="mb-4 bg-red-950/30 border border-red-800/40 rounded-lg px-4 py-3 text-sm text-red-400"
+           x-text="catalogError"></div>
 
-    <!-- Estimates (Phase 7) -->
+      <!-- Loading -->
+      <div x-show="catalogLoading && !catalogError" class="flex items-center gap-2 text-gray-500 py-8">
+        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading catalog...
+      </div>
+
+      <div class="flex gap-4" x-show="!catalogLoading || catalogGroups.length > 0" style="height: calc(100vh - 180px)">
+
+        <!-- Left: group tree -->
+        <div class="w-64 shrink-0 space-y-1 overflow-y-auto pr-1">
+          <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">Groups</div>
+          <template x-for="g in catalogGroups" :key="g.mg">
+            <div>
+              <button @click="selectGroup(g.mg)"
+                      :class="catalogSelectedHg === g.mg ? 'bg-bmw-blue/20 text-bmw-blue border-bmw-blue/30' : 'text-gray-400 hover:text-gray-200 border-transparent hover:bg-gray-800/50'"
+                      class="w-full text-left text-sm px-3 py-2 rounded border transition-colors flex items-center gap-2">
+                <img :src="g.img_url" :alt="g.name"
+                     class="w-8 h-8 object-contain shrink-0"
+                     @error="$el.style.display='none'">
+                <span x-text="g.name"></span>
+              </button>
+              <!-- Sub-groups -->
+              <div x-show="catalogSelectedHg === g.mg && catalogSubgroups.length > 0" class="ml-2 mt-1 space-y-0.5">
+                <template x-for="sub in catalogSubgroups" :key="sub.diag_id">
+                  <button @click="selectSubgroup(sub)"
+                          :class="catalogSelectedSub?.diag_id === sub.diag_id
+                            ? 'bg-bmw-blue/10 text-bmw-blue'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'"
+                          class="w-full text-left text-xs px-2 py-1.5 rounded transition-colors flex items-center gap-2">
+                    <img x-show="sub.thumb_url" :src="sub.thumb_url" :alt="sub.name"
+                         class="w-10 h-8 object-cover rounded shrink-0 bg-gray-800"
+                         @error="sub.thumb_url = null">
+                    <span x-text="sub.name" class="leading-tight"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Right: parts table -->
+        <div class="flex-1 min-w-0 overflow-y-auto">
+          <div x-show="!catalogSelectedSub" class="text-center py-16 text-gray-600">
+            <div class="text-3xl mb-2">&#8592;</div>
+            Select a group, then a sub-group to see parts
+          </div>
+
+          <div x-show="catalogSelectedSub && catalogParts.length === 0 && !catalogLoading"
+               class="text-center py-16 text-gray-600">No parts found for this diagram.</div>
+
+          <div x-show="catalogParts.length > 0">
+            <!-- Diagram image -->
+            <div x-show="catalogDiagramUrl" class="mb-4 bg-gray-900 rounded-xl border border-gray-800 overflow-hidden flex items-center justify-center p-2">
+              <img :src="catalogDiagramUrl" :alt="catalogSelectedSub?.name"
+                   class="max-w-full max-h-96 object-contain"
+                   @error="catalogDiagramUrl = null">
+            </div>
+            <div class="text-xs text-gray-500 mb-3" x-text="catalogParts.length + ' parts'"></div>
+            <div class="rounded-xl border border-gray-800 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-gray-900 text-gray-400 text-xs uppercase tracking-widest">
+                    <th class="px-3 py-2 text-left">Ref</th>
+                    <th class="px-3 py-2 text-left">OEM PN</th>
+                    <th class="px-3 py-2 text-left">Description</th>
+                    <th class="px-3 py-2 text-right">Qty</th>
+                    <th class="px-3 py-2 text-right">RealOEM (USD)</th>
+                    <th class="px-3 py-2 text-right" x-data="{ tier: 'best', showOos: false }">
+                      <div class="flex items-center justify-end gap-2 flex-wrap">
+                        <span class="whitespace-nowrap">RockAuto (CAD)</span>
+                        <select x-model="tier" @change="$dispatch('ra-tier', {tier, showOos})"
+                                class="bg-gray-800 border border-gray-700 rounded px-1 py-0 text-xs text-gray-400 focus:outline-none">
+                          <option value="best">Best value</option>
+                          <option value="mid">Mid range</option>
+                          <option value="top">Premium</option>
+                        </select>
+                        <label class="flex items-center gap-1 text-xs text-gray-500 font-normal cursor-pointer whitespace-nowrap">
+                          <input type="checkbox" x-model="showOos" @change="$dispatch('ra-tier', {tier, showOos})"
+                                 class="accent-bmw-blue">
+                          OOS
+                        </label>
+                      </div>
+                    </th>
+                    <th class="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="(p, pIdx) in catalogParts" :key="p.oem_pn">
+                    <tr class="border-t border-gray-800/50 hover:bg-gray-800/30 transition-colors"
+                        x-data="{ raList: null, raLoading: false, raTier: 'best', raShowOos: false,
+                          raVisible() { return this.raList ? (this.raShowOos ? this.raList : this.raList.filter(function(r){ return r.availability !== 'out_of_stock'; })) : []; },
+          raPriced() { return this.raVisible().filter(function(r){ return r.availability !== 'map_price' && r.price > 0; }); },
+                          raPickIdx() { var v = this.raPriced(); if (!v.length) return -1; if (this.raTier === 'top') return v.length-1; if (this.raTier === 'mid') return Math.floor(v.length/2); return 0; }
+                        }"
+                        @ra-tier.window="raTier = $event.detail.tier; raShowOos = $event.detail.showOos"
+                        x-init="setTimeout(() => { raLoading=true; fetch('/api/rockauto/oem?pn=' + p.oem_pn).then(r=>r.json()).then(d=>{ raList = d.parts || []; raLoading=false; }).catch(()=>{ raList = []; raLoading=false; }); }, pIdx * 150)">
+                      <td class="px-3 py-2 text-gray-600 text-xs font-mono" x-text="p.diagram_ref ?? '—'"></td>
+                      <td class="px-3 py-2 font-mono text-xs text-gray-300" x-text="p.oem_pn"></td>
+                      <td class="px-3 py-2 text-gray-300">
+                        <div class="flex items-start gap-1.5 flex-wrap">
+                          <span x-text="p.description"></span>
+                          <span x-show="p.fitment_note"
+                                :title="p.fitment_note"
+                                class="text-xs bg-blue-900/50 text-blue-300 border border-blue-800/50 rounded px-1.5 py-0.5 shrink-0 cursor-help"
+                                x-text="p.fitment_note && p.fitment_note.replace(/For vehicles? (with|without) /i,'').split(/[,(]/)[0].trim()"></span>
+                          <span x-show="p.part_notes"
+                                class="text-xs text-amber-500/70 shrink-0"
+                                x-text="p.part_notes"></span>
+                        </div>
+                        <div x-show="p.from_date || p.to_date" class="text-xs text-gray-600 mt-0.5">
+                          <span x-show="p.from_date" x-text="'From ' + p.from_date"></span>
+                          <span x-show="p.from_date && p.to_date"> – </span>
+                          <span x-show="p.to_date" x-text="'To ' + p.to_date"></span>
+                        </div>
+                      </td>
+                      <td class="px-3 py-2 text-right text-gray-500 text-xs" x-text="p.qty_required"></td>
+                      <td class="px-3 py-2 text-right text-gray-500 text-xs"
+                          x-text="p.realoem_price ? '$' + p.realoem_price.toFixed(2) : '—'"></td>
+                      <!-- RockAuto column -->
+                      <td class="px-3 py-2 text-right text-xs">
+                        <span x-show="raLoading" class="text-gray-500 text-xs">...</span>
+                        <div x-show="raList !== null && raVisible().length > 0" class="flex items-center justify-end gap-1">
+                          <template x-if="raPriced().length > 0">
+                            <div class="text-right">
+                              <a :href="raPriced()[raPickIdx()]?.url || 'https://www.rockauto.com/en/partslist/?partnum=' + p.oem_pn"
+                                 target="_blank" rel="noopener"
+                                 class="text-green-400 hover:text-green-300 hover:underline whitespace-nowrap"
+                                 x-text="'CAD$' + raPriced()[raPickIdx()]?.price.toFixed(2) + ' ' + raPriced()[raPickIdx()]?.brand"></a>
+                              <div x-show="p.realoem_price && raPriced()[raPickIdx()]?.price > 0"
+                                   :class="(p.realoem_price - raPriced()[raPickIdx()]?.price) > 0 ? 'text-emerald-600' : 'text-red-500'"
+                                   class="text-xs whitespace-nowrap"
+                                   x-text="(p.realoem_price - raPriced()[raPickIdx()]?.price) > 0
+                                     ? 'Save $' + (p.realoem_price - raPriced()[raPickIdx()]?.price).toFixed(2) + ' vs OEM*'
+                                     : '+$' + (raPriced()[raPickIdx()]?.price - p.realoem_price).toFixed(2) + ' vs OEM*'"></div>
+                            </div>
+                          </template>
+                          <template x-if="raPriced().length === 0">
+                            <a :href="'https://www.rockauto.com/en/partslist/?partnum=' + p.oem_pn"
+                               target="_blank" rel="noopener"
+                               class="text-yellow-500 hover:underline whitespace-nowrap text-xs">See cart ↗</a>
+                          </template>
+                          <button x-show="raVisible().length > 1"
+                                  @click="openRaDropdown($event, raVisible(), p.oem_pn)"
+                                  class="text-gray-600 hover:text-gray-300 transition-colors"
+                                  x-text="'▾ ' + raVisible().length"></button>
+                        </div>
+                        <span x-show="raList !== null && raVisible().length === 0" class="text-gray-600 text-xs">—</span>
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <button @click="addPartToPlan(p)"
+                                class="text-xs bg-gray-800 hover:bg-bmw-blue text-gray-400 hover:text-white px-2 py-1 rounded transition-colors whitespace-nowrap">
+                          + Plan
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p class="text-xs text-gray-700 px-4 py-2">* Savings vs RealOEM (USD). RockAuto prices in CAD — comparison is approximate until BMW Canada pricing is available.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /catalog -->
+
+    <!-- ── Plans tab ─────────────────────────────────────────────────────── -->
+    <div x-show="activeTab === 'plans'" x-cloak>
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-semibold">Service Plans</h2>
+        <!-- New plan form -->
+        <div class="flex gap-2">
+          <input type="text" x-model="newPlanName" placeholder="Plan name"
+                 @keydown.enter="createPlan()"
+                 class="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-bmw-blue w-48">
+          <button @click="createPlan()"
+                  :disabled="!newPlanName.trim()"
+                  class="text-xs bg-bmw-blue hover:bg-blue-500 disabled:opacity-40 text-white px-3 py-1.5 rounded transition-colors">
+            New Plan
+          </button>
+        </div>
+      </div>
+
+      <div x-show="plansLoading" class="text-gray-500 py-8">Loading plans...</div>
+
+      <div x-show="!plansLoading && plansList.length === 0" class="text-center py-16 text-gray-600">
+        No service plans yet. Create one above.
+      </div>
+
+      <div x-show="plansList.length > 0" class="flex gap-4">
+
+        <!-- Plan list -->
+        <div class="w-56 shrink-0 space-y-1">
+          <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">Service Plans</div>
+          <template x-for="plan in plansList" :key="plan.id">
+            <div :class="activePlan?.id === plan.id ? 'bg-bmw-blue/20 border-bmw-blue/30' : 'border-transparent hover:bg-gray-800/50'"
+                 class="border rounded px-3 py-2 cursor-pointer transition-colors group"
+                 @click="activePlan = plan"
+                 x-data="{ renaming: false, draft: '' }">
+              <!-- Normal view -->
+              <div x-show="!renaming" class="flex items-center justify-between gap-1">
+                <div>
+                  <div class="text-sm font-medium" x-text="plan.name"></div>
+                  <div class="text-xs text-gray-500 mt-0.5"
+                       x-text="(plan.ungrouped_parts.length + plan.jobs.reduce((n,j) => n + j.parts.length, 0)) + ' parts · ' + plan.jobs.length + ' jobs'"></div>
+                </div>
+                <button @click.stop="draft = plan.name; renaming = true"
+                        class="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-gray-300 text-xs px-1 transition-opacity"
+                        title="Rename">&#9998;</button>
+              </div>
+              <!-- Rename input -->
+              <div x-show="renaming" @click.stop class="flex gap-1">
+                <input type="text" x-model="draft"
+                       x-init="$nextTick(() => renaming && $el.focus())"
+                       @keydown.enter="await renamePlan(plan.id, draft); renaming = false"
+                       @keydown.escape="renaming = false"
+                       @blur="renaming = false"
+                       class="flex-1 min-w-0 bg-gray-700 border border-bmw-blue rounded px-2 py-0.5 text-xs focus:outline-none">
+                <button @mousedown.prevent="await renamePlan(plan.id, draft); renaming = false"
+                        class="text-bmw-blue text-xs px-1">&#10003;</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Plan detail -->
+        <div class="flex-1 min-w-0" x-show="activePlan">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-lg" x-text="activePlan?.name"></h3>
+            <div class="flex gap-2">
+              <button @click="generateEmail(activePlan.id)"
+                      class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded transition-colors">
+                Generate Email
+              </button>
+              <button @click="deletePlan(activePlan.id)"
+                      class="text-xs text-red-500 hover:text-red-400 px-2 py-1.5 transition-colors">
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <!-- Ungrouped parts -->
+          <div x-show="activePlan?.ungrouped_parts.length > 0" class="mb-4">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Ungrouped Parts</div>
+            <div class="rounded-xl border border-gray-800 overflow-hidden">
+              <table class="w-full text-sm">
+                <tbody>
+                  <template x-for="sp in activePlan?.ungrouped_parts" :key="sp.catalog_part.oem_pn">
+                    <tr class="border-t border-gray-800/50 first:border-0 hover:bg-gray-800/30">
+                      <td class="px-3 py-2 font-mono text-xs text-gray-400" x-text="sp.catalog_part.oem_pn"></td>
+                      <td class="px-3 py-2 text-gray-300">
+                        <button @click="openPartDetail(sp)" class="text-left hover:text-bmw-blue transition-colors"
+                                x-text="sp.catalog_part.description"></button>
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <input type="number" min="1" :value="sp.catalog_part.qty_required"
+                               @change="updatePartQty(activePlan.id, sp.catalog_part.oem_pn, $event.target.value)"
+                               class="w-14 bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-xs text-right text-gray-300 focus:outline-none focus:border-bmw-blue">
+                      </td>
+                      <!-- Assign to job -->
+                      <td class="px-3 py-2 text-right" x-show="activePlan?.jobs.length > 0">
+                        <select @change="assignPartToJob(activePlan.id, sp.catalog_part.oem_pn, $event.target.value); $event.target.value=''"
+                                class="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-gray-400 focus:outline-none focus:border-bmw-blue max-w-32">
+                          <option value="">Assign to job...</option>
+                          <template x-for="job in activePlan.jobs" :key="job.id">
+                            <option :value="job.id" x-text="job.name"></option>
+                          </template>
+                        </select>
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <button @click="removePartFromPlan(activePlan.id, sp.catalog_part.oem_pn)"
+                                class="text-xs text-gray-600 hover:text-red-400 transition-colors">&times;</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Add job -->
+          <div class="flex gap-2 mb-4" x-data="{ newJobName: '' }">
+            <input x-model="newJobName" type="text" placeholder="New job name (e.g. Oil Service)"
+                   @keydown.enter="if(newJobName.trim()) { addJob(activePlan.id, newJobName.trim()); newJobName=''; }"
+                   class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-bmw-blue">
+            <button @click="if(newJobName.trim()) { addJob(activePlan.id, newJobName.trim()); newJobName=''; }"
+                    :disabled="!newJobName.trim()"
+                    class="px-3 py-1.5 rounded-lg text-sm bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:border-bmw-blue disabled:opacity-40 transition-colors">
+              + Add Job
+            </button>
+          </div>
+
+          <!-- Jobs -->
+          <template x-for="job in activePlan?.jobs" :key="job.id">
+            <div class="mb-3 rounded-xl border border-gray-800 overflow-hidden"
+                 x-data="{ renaming: false, jobNameEdit: '' }">
+              <div class="bg-gray-900 px-4 py-2.5 flex items-center justify-between gap-2">
+                <!-- Name / rename input -->
+                <div class="flex items-center gap-2 flex-1 min-w-0">
+                  <template x-if="!renaming">
+                    <span class="font-medium text-sm truncate" x-text="job.name"></span>
+                  </template>
+                  <template x-if="renaming">
+                    <input x-model="jobNameEdit" type="text"
+                           @keydown.enter="renameJob(activePlan.id, job.id, jobNameEdit); renaming=false"
+                           @keydown.escape="renaming=false"
+                           class="bg-gray-800 border border-bmw-blue rounded px-2 py-0.5 text-sm text-gray-200 focus:outline-none w-48">
+                  </template>
+                  <button x-show="!renaming"
+                          @click="jobNameEdit=job.name; renaming=true"
+                          class="text-gray-600 hover:text-gray-300 text-xs transition-colors shrink-0">&#9998;</button>
+                  <button x-show="renaming"
+                          @click="renameJob(activePlan.id, job.id, jobNameEdit); renaming=false"
+                          class="text-bmw-blue text-xs hover:text-white transition-colors shrink-0">Save</button>
+                </div>
+                <div class="flex items-center gap-3 text-xs shrink-0">
+                  <span x-show="job.no_warranty" class="text-yellow-600">No warranty</span>
+                  <span x-show="job.customer_supplied_labour" class="text-sky-600">Labour supplied</span>
+                  <button @click="deleteJob(activePlan.id, job.id)"
+                          class="text-gray-600 hover:text-red-400 transition-colors"
+                          title="Delete job (parts return to ungrouped)">&times;</button>
+                </div>
+              </div>
+              <table class="w-full text-sm" x-show="job.parts.length > 0">
+                <tbody>
+                  <template x-for="sp in job.parts" :key="sp.catalog_part.oem_pn">
+                    <tr class="border-t border-gray-800/50 hover:bg-gray-800/30">
+                      <td class="px-3 py-2 font-mono text-xs text-gray-400" x-text="sp.catalog_part.oem_pn"></td>
+                      <td class="px-3 py-2 text-gray-300">
+                        <button @click="openPartDetail(sp)" class="text-left hover:text-bmw-blue transition-colors"
+                                x-text="sp.catalog_part.description"></button>
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <input type="number" min="1" :value="sp.catalog_part.qty_required"
+                               @change="updatePartQty(activePlan.id, sp.catalog_part.oem_pn, $event.target.value)"
+                               class="w-14 bg-gray-800 border border-gray-700 rounded px-2 py-0.5 text-xs text-right text-gray-300 focus:outline-none focus:border-bmw-blue">
+                      </td>
+                      <td class="px-3 py-2 text-right text-xs text-gray-600"
+                          x-show="sp.preferred_brand" x-text="sp.preferred_brand"></td>
+                      <td class="px-3 py-2 text-right">
+                        <button @click="unassignPartFromJob(activePlan.id, job.id, sp.catalog_part.oem_pn)"
+                                title="Move back to ungrouped"
+                                class="text-xs text-gray-600 hover:text-yellow-400 transition-colors">&#8617;</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="job.labour_notes" class="px-4 py-2 text-xs text-gray-500 border-t border-gray-800/50"
+                   x-text="'Notes: ' + job.labour_notes"></div>
+            </div>
+          </template>
+
+          <div x-show="activePlan?.ungrouped_parts.length === 0 && activePlan?.jobs.length === 0"
+               class="text-center py-12 text-gray-600">
+            Plan is empty. Add parts from the Catalog tab.
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /plans -->
+
+    <!-- ── Estimates tab ─────────────────────────────────────────────────── -->
     <div x-show="activeTab === 'estimates'" x-cloak class="text-center py-20">
-      <div class="text-5xl mb-4">📄</div>
-      <div class="text-xl font-semibold mb-2">Shop Estimates</div>
-      <div class="text-gray-500">Estimate import and comparison — coming in Phase 7</div>
+      <div class="text-4xl mb-3 text-gray-700">&#128196;</div>
+      <div class="text-xl font-semibold mb-2 text-gray-400">Shop Estimates</div>
+      <div class="text-gray-600">Estimate import and comparison — coming in Phase 7</div>
     </div>
 
   </main>
+
+  <!-- ── RockAuto Alternatives Overlay ───────────────────────────────────── -->
+  <div x-show="raDropdown.open" x-cloak
+       id="ra-dropdown-overlay"
+       :style="raDropdown.style"
+       class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 w-80 max-h-96 overflow-y-auto text-sm"
+       @click.outside="raDropdown.open = false"
+       @keydown.escape.window="raDropdown.open = false">
+    <div class="px-4 py-2.5 border-b border-gray-800 flex items-center justify-between sticky top-0 bg-gray-900">
+      <span class="text-xs text-gray-500 font-mono" x-text="raDropdown.oemPn"></span>
+      <a :href="'https://www.rockauto.com/en/partslist/?partnum=' + raDropdown.oemPn"
+         target="_blank" rel="noopener"
+         class="text-xs text-bmw-blue hover:underline">View all on RockAuto ↗</a>
+    </div>
+    <template x-for="(alt, ai) in raDropdown.list" :key="ai">
+      <a :href="alt.url || 'https://www.rockauto.com/en/partslist/?partnum=' + raDropdown.oemPn"
+         target="_blank" rel="noopener"
+         @click="raDropdown.open = false"
+         class="group flex items-start justify-between px-4 py-2.5 hover:bg-gray-800 border-b border-gray-800/40 last:border-0 transition-colors cursor-pointer">
+        <div class="min-w-0 mr-3">
+          <div class="flex items-center gap-1">
+            <span class="text-xs font-semibold text-gray-200 group-hover:text-white" x-text="alt.brand"></span>
+            <span class="text-gray-600 group-hover:text-gray-400 text-xs">↗</span>
+          </div>
+          <div class="text-xs text-gray-500 font-mono" x-text="alt.part_number"></div>
+          <div x-show="alt.notes" class="text-xs text-gray-600 leading-tight mt-0.5" x-text="alt.notes"></div>
+        </div>
+        <div class="text-xs font-mono shrink-0 mt-0.5"
+             :class="alt.availability === 'out_of_stock' ? 'text-gray-500' : (alt.availability === 'map_price' || alt.price === 0) ? 'text-yellow-500' : 'text-green-400'"
+             x-text="alt.availability === 'out_of_stock' ? 'Out of stock' : (alt.availability === 'map_price' || alt.price === 0) ? 'See cart ↗' : 'CAD$' + alt.price.toFixed(2)"></div>
+      </a>
+    </template>
+  </div>
+
+  <!-- ── Toast ────────────────────────────────────────────────────────────── -->
+  <div x-show="toast.show" x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 translate-y-2"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100 translate-y-0"
+       x-transition:leave-end="opacity-0 translate-y-2"
+       class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-gray-700 text-gray-200 text-sm px-4 py-2.5 rounded-lg shadow-xl whitespace-nowrap"
+       x-text="toast.message"></div>
+
+  <!-- ── AI Chat Sidebar ─────────────────────────────────────────────────── -->
+  <div x-show="chatOpen" x-cloak x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full"
+       class="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-800 flex flex-col z-40 shadow-2xl">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-sm">AI Assistant</span>
+        <span class="text-xs text-gray-500">qwen3:8b</span>
+        <button @click="chatShowThinking = !chatShowThinking"
+                :class="chatShowThinking ? 'text-purple-400 border-purple-500/40 bg-purple-500/10' : 'text-gray-600 border-gray-700 hover:text-gray-400'"
+                class="text-xs px-2 py-0.5 rounded border transition-colors flex items-center gap-1">
+          <span>&#9670;</span>
+          <span x-text="chatShowThinking ? 'Thinking on' : 'Thinking off'"></span>
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="clearChat()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+        <button @click="chatOpen = false" class="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-4 space-y-4 text-sm">
+      <div x-show="chatMessages.length === 0" class="text-gray-600 text-xs text-center py-8">
+        Ask about your maintenance schedule, parts, or service history.
+      </div>
+
+      <template x-for="(msg, idx) in chatMessages" :key="idx">
+        <div>
+          <!-- User bubble -->
+          <div x-show="msg.role === 'user'" class="flex justify-end">
+            <div class="bg-bmw-blue/20 text-gray-200 rounded-xl rounded-tr-sm px-3 py-2 max-w-[85%] text-sm"
+                 x-text="msg.content"></div>
+          </div>
+
+          <!-- Assistant bubble -->
+          <div x-show="msg.role === 'assistant'" class="space-y-2">
+            <!-- Thinking block — visibility controlled by global header toggle -->
+            <div x-show="msg.thinking && chatShowThinking"
+                 class="bg-gray-800/40 rounded-lg px-3 py-2 text-xs text-gray-500 whitespace-pre-wrap leading-relaxed border-l-2 border-purple-500/30"
+                 x-text="msg.thinking"></div>
+            <!-- Tool calls -->
+            <template x-for="(tc, ti) in (msg.tool_calls || [])" :key="ti">
+              <div class="bg-gray-800/60 rounded-lg px-3 py-1.5 text-xs">
+                <button @click="msg.toolsOpen[ti] = !msg.toolsOpen[ti]"
+                        class="flex items-center gap-2 w-full text-left text-gray-400 hover:text-gray-200">
+                  <span class="text-bmw-blue">&#9656;</span>
+                  <span class="font-mono" x-text="tc.name"></span>
+                  <span class="text-gray-600 ml-auto" x-text="msg.toolsOpen[ti] ? '&#9650;' : '&#9660;'"></span>
+                </button>
+                <div x-show="msg.toolsOpen[ti]"
+                     class="mt-2 text-gray-500 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all"
+                     x-text="JSON.stringify(tc.result, null, 2).slice(0, 800)"></div>
+              </div>
+            </template>
+            <!-- Reply — markdown rendered -->
+            <div x-show="msg.content"
+                 class="bg-gray-800/40 text-gray-200 rounded-xl rounded-tl-sm px-3 py-2 max-w-[95%] text-sm chat-prose"
+                 x-html="marked.parse(msg.content || '')"></div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Thinking indicator -->
+      <div x-show="chatLoading" class="flex gap-2 items-center text-gray-500 text-xs">
+        <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Thinking...
+      </div>
+    </div>
+
+    <!-- AI offline warning -->
+    <div x-show="aiOk === false" class="px-4 py-2 bg-red-950/40 border-t border-red-900/30 text-xs text-red-400 shrink-0">
+      Ollama is not running. Start it with: <code class="font-mono">ollama serve</code>
+    </div>
+
+    <!-- Input -->
+    <div class="px-4 py-3 border-t border-gray-800 shrink-0">
+      <div class="flex gap-2">
+        <input type="text" x-model="chatInput" placeholder="Ask anything..."
+               @keydown.enter="sendChat()"
+               :disabled="chatLoading || aiOk === false"
+               class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-bmw-blue disabled:opacity-50">
+        <button @click="sendChat()" :disabled="chatLoading || !chatInput.trim() || aiOk === false"
+                class="bg-bmw-blue hover:bg-blue-500 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-sm transition-colors">
+          Send
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Part Detail Modal ────────────────────────────────────────────────── -->
+  <div x-show="partModal.open" x-cloak
+       class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+       @keydown.escape.window="partModal.open = false"
+       @click.self="partModal.open = false">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-xl">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <h3 class="font-semibold">Part Detail</h3>
+        <button @click="partModal.open = false" class="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
+      </div>
+      <!-- Diagram image -->
+      <div x-show="partModal.diagramUrl || partModal.diagramLoading"
+           class="bg-gray-950 border-b border-gray-800 flex items-center justify-center p-3 min-h-24">
+        <div x-show="partModal.diagramLoading" class="text-xs text-gray-600">Loading diagram...</div>
+        <img x-show="partModal.diagramUrl" :src="partModal.diagramUrl" :alt="partModal.part?.description"
+             class="max-w-full max-h-[28rem] object-contain"
+             @error="partModal.diagramUrl = null">
+      </div>
+      <div class="px-5 py-4 space-y-3 text-sm">
+        <div class="flex items-start gap-3">
+          <div x-show="partModal.part?.diagram_ref"
+               class="shrink-0 w-8 h-8 rounded-full bg-bmw-blue/20 border border-bmw-blue/40 flex items-center justify-center text-bmw-blue font-bold text-sm font-mono"
+               x-text="partModal.part?.diagram_ref"></div>
+          <div class="flex-1">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Description</div>
+            <div class="text-gray-200 font-medium" x-text="partModal.part?.description"></div>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">OEM Part Number</div>
+          <div class="font-mono text-gray-300" x-text="partModal.part?.oem_pn"></div>
+        </div>
+        <div x-show="partModal.part?.realoem_price">
+          <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">RealOEM Price (USD)</div>
+          <div class="text-gray-300" x-text="'$' + partModal.part?.realoem_price?.toFixed(2)"></div>
+        </div>
+      </div>
+      <div class="px-5 py-3 border-t border-gray-800 flex gap-2">
+        <button @click="viewPartInCatalog(partModal.part)"
+                x-show="partModal.part?.catalog_path?.length > 0 || partModal.diagramUrl"
+                class="flex-1 text-sm bg-bmw-blue hover:bg-blue-500 text-white px-3 py-2 rounded transition-colors">
+          View in Catalog
+        </button>
+        <button @click="partModal.open = false"
+                class="flex-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2 rounded transition-colors">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Email Modal ───────────────────────────────────────────────────────── -->
+  <div x-show="emailModal.open" x-cloak
+       class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+       @keydown.escape.window="emailModal.open = false">
+    <div class="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+         @click.outside="emailModal.open = false">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800 shrink-0">
+        <h3 class="font-semibold text-lg">Quote Request Email</h3>
+        <div class="flex items-center gap-3">
+          <button @click="copyEmail()" class="text-xs bg-bmw-blue hover:bg-blue-500 text-white px-3 py-1.5 rounded transition-colors">
+            Copy to Clipboard
+          </button>
+          <button @click="emailModal.open = false" class="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
+        </div>
+      </div>
+      <div class="px-6 py-4 overflow-y-auto flex-1">
+        <pre class="font-mono text-xs text-gray-300 whitespace-pre-wrap leading-relaxed" x-text="emailModal.text"></pre>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Record Service Modal ───────────────────────────────────────────── -->
   <div x-show="historyModal.open" x-cloak
@@ -366,6 +971,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2"></script>
 </body>
 </html>

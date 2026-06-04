@@ -7,9 +7,21 @@ The app raises RuntimeError at startup if either condition is not met.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterator
 
 import ollama
+
+
+def _split_think(text: str) -> tuple[str, str]:
+    """Separate <think>...</think> reasoning from the final reply.
+
+    Returns (thinking_text, reply_text). Either may be empty string.
+    """
+    m = re.search(r"<think>(.*?)</think>(.*)", text, flags=re.DOTALL)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    return "", text.strip()
 
 from .ai_tools import TOOLS, dispatch
 
@@ -18,18 +30,24 @@ MODEL = "qwen3:8b"
 SYSTEM_PROMPT = """\
 You are a BMW maintenance assistant. You help the owner understand their \
 maintenance schedule, look up OEM parts in the RealOEM catalog, find \
-aftermarket alternatives on RockAuto, and plan upcoming service work.
+aftermarket alternatives on RockAuto, and build service plans.
 
 You have access to tools that fetch live data from the app. Always use \
-the appropriate tool before answering questions about the vehicle, its \
-maintenance status, or parts. Be concise and specific — the owner is \
+the appropriate tool before answering. Be concise — the owner is \
 technically knowledgeable. Quote part numbers and prices when you have them.
 
-When the owner asks what needs doing, call get_overdue_items first. \
-When they ask about a specific system, call get_schedule_status and \
-filter your answer to that system. When they ask about parts, use \
-search_catalog and get_rockauto_alternatives together to give both \
-OEM and aftermarket options with pricing.
+Rules:
+- When asked what needs doing: call get_overdue_items first.
+- When asked about a specific system: call get_schedule_status.
+- When asked about parts: use search_catalog (format: "Group > Subgroup", \
+  e.g. "Brakes > Front Brake Pads") then get_rockauto_alternatives for \
+  aftermarket pricing.
+- When asked to build a plan: call list_plans first to check for an \
+  existing plan, then create_plan if needed. Search the catalog with \
+  search_catalog to find the correct diagram, then call add_parts_to_plan \
+  with the relevant OEM part numbers, descriptions, diagram_ref, and diag_id. \
+  Confirm to the user which parts were added and what the plan is called.
+- Never invent part numbers. Only add parts you found via search_catalog.
 """
 
 
@@ -92,9 +110,10 @@ class AIClient:
             msg = response.message
 
             if not msg.tool_calls:
-                # Final answer — no more tool calls requested
+                thinking, reply = _split_think(msg.content or "")
                 return {
-                    "reply": msg.content or "",
+                    "reply": reply,
+                    "thinking": thinking,
                     "tool_calls": tool_call_log,
                 }
 

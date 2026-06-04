@@ -120,7 +120,12 @@ class CatalogPart(BaseModel):
     realoem_price: Optional[float] = None
     superseded_by: Optional[str] = None
     diagram_ref: Optional[str] = None
+    diagram_url: Optional[str] = None
     catalog_path: list[str] = Field(default_factory=list)
+    fitment_note: Optional[str] = None   # e.g. "For vehicles with M Sports suspension"
+    part_notes: Optional[str] = None     # e.g. "Required for repair"
+    from_date: Optional[str] = None      # production date range start e.g. "06/2010"
+    to_date: Optional[str] = None        # production date range end
 
 
 class DiagramHotspot(BaseModel):

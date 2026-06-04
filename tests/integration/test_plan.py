@@ -147,6 +147,50 @@ class TestJobManagement:
         with pytest.raises(ValueError, match="not found"):
             assign_part_to_job(plan.id, "99999999999", job_id)
 
+    def test_unassign_part_returns_to_ungrouped(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_part, add_job, assign_part_to_job, unassign_part_from_job
+        plan = create_plan("Test", "VIN123")
+        add_part(plan.id, "11427541827", description="Filter")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        assign_part_to_job(plan.id, "11427541827", job_id)
+        result = unassign_part_from_job(plan.id, "11427541827", job_id)
+        assert len(result.jobs[0].parts) == 0
+        assert len(result.ungrouped_parts) == 1
+        assert result.ungrouped_parts[0].catalog_part.oem_pn == "11427541827"
+
+    def test_unassign_nonexistent_part_raises(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_job, unassign_part_from_job
+        plan = create_plan("Test", "VIN123")
+        updated = add_job(plan.id, "Job")
+        with pytest.raises(ValueError):
+            unassign_part_from_job(plan.id, "99999999999", updated.jobs[0].id)
+
+    def test_delete_job(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_job, delete_job
+        plan = create_plan("Test", "VIN123")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        result = delete_job(plan.id, job_id)
+        assert len(result.jobs) == 0
+
+    def test_delete_job_returns_parts_to_ungrouped(self, plans_dir):
+        from bmw_helper.plan import create_plan, add_part, add_job, assign_part_to_job, delete_job
+        plan = create_plan("Test", "VIN123")
+        add_part(plan.id, "11427541827", description="Filter")
+        updated = add_job(plan.id, "Oil Service")
+        job_id = updated.jobs[0].id
+        assign_part_to_job(plan.id, "11427541827", job_id)
+        result = delete_job(plan.id, job_id)
+        assert len(result.jobs) == 0
+        assert len(result.ungrouped_parts) == 1
+
+    def test_delete_nonexistent_job_raises(self, plans_dir):
+        from bmw_helper.plan import create_plan, delete_job
+        plan = create_plan("Test", "VIN123")
+        with pytest.raises(ValueError):
+            delete_job(plan.id, "badid")
+
 
 class TestPersistence:
     def test_load_returns_same_plan(self, plans_dir):
@@ -267,3 +311,52 @@ class TestPlanAPI:
         data = res.json()
         assert data["ungrouped_parts"] == []
         assert len(data["jobs"][0]["parts"]) == 1
+
+    def test_rename_plan(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Old Name"}).json()
+        res = plan_client.patch(f"/api/plans/{plan['id']}", json={"name": "New Name"})
+        assert res.status_code == 200
+        assert res.json()["name"] == "New Name"
+
+    def test_rename_plan_persists(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Old Name"}).json()
+        plan_client.patch(f"/api/plans/{plan['id']}", json={"name": "Renamed"})
+        fetched = plan_client.get(f"/api/plans/{plan['id']}").json()
+        assert fetched["name"] == "Renamed"
+
+    def test_rename_nonexistent_plan_returns_404(self, plan_client):
+        res = plan_client.patch("/api/plans/doesnotexist", json={"name": "X"})
+        assert res.status_code == 404
+
+    def test_update_part_qty(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827", "description": "Oil Filter", "qty": 1,
+        })
+        res = plan_client.patch(f"/api/plans/{plan['id']}/parts/11427541827?qty=3")
+        assert res.status_code == 200
+        part = res.json()["ungrouped_parts"][0]
+        assert part["catalog_part"]["qty_required"] == 3
+
+    def test_update_part_qty_invalid_returns_400(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827", "description": "Oil Filter",
+        })
+        res = plan_client.patch(f"/api/plans/{plan['id']}/parts/11427541827?qty=0")
+        assert res.status_code == 400
+
+    def test_add_part_stores_catalog_metadata(self, plan_client):
+        plan = plan_client.post("/api/plans", json={"name": "Test"}).json()
+        res = plan_client.post(f"/api/plans/{plan['id']}/parts", json={
+            "oem_pn": "11427541827",
+            "description": "Oil Filter",
+            "catalog_path": ["11_3971"],
+            "diagram_url": "https://www.realoem.com/bmw/images/diag_abc.jpg",
+            "diagram_ref": "03",
+        })
+        assert res.status_code == 201
+        cp = res.json()["ungrouped_parts"][0]["catalog_part"]
+        assert cp["catalog_path"] == ["11_3971"]
+        assert cp["diagram_url"] == "https://www.realoem.com/bmw/images/diag_abc.jpg"
+        assert cp["diagram_ref"] == "03"

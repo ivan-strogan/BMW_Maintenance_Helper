@@ -73,10 +73,20 @@ def add_part(
     notes: Optional[str] = None,
     customer_supplied: bool = False,
     job_id: Optional[str] = None,
+    catalog_path: list[str] | None = None,
+    diagram_url: Optional[str] = None,
+    diagram_ref: Optional[str] = None,
 ) -> ServicePlan:
     plan = load_plan(plan_id)
 
-    catalog_part = CatalogPart(oem_pn=oem_pn, description=description, qty_required=qty)
+    catalog_part = CatalogPart(
+        oem_pn=oem_pn,
+        description=description,
+        qty_required=qty,
+        catalog_path=catalog_path or [],
+        diagram_url=diagram_url,
+        diagram_ref=diagram_ref,
+    )
     selected = SelectedPart(
         catalog_part=catalog_part,
         preferred_brand=preferred_brand,
@@ -94,6 +104,25 @@ def add_part(
     return plan
 
 
+def update_part_qty(plan_id: str, oem_pn: str, qty: int) -> ServicePlan:
+    """Update the quantity of a part wherever it lives in the plan."""
+    if qty < 1:
+        raise ValueError("qty must be >= 1")
+    plan = load_plan(plan_id)
+    for sp in plan.ungrouped_parts:
+        if sp.catalog_part.oem_pn == oem_pn:
+            sp.catalog_part.qty_required = qty
+            save_plan(plan)
+            return plan
+    for job in plan.jobs:
+        for sp in job.parts:
+            if sp.catalog_part.oem_pn == oem_pn:
+                sp.catalog_part.qty_required = qty
+                save_plan(plan)
+                return plan
+    raise ValueError(f"Part {oem_pn} not found in plan {plan_id}")
+
+
 def remove_part(plan_id: str, oem_pn: str) -> ServicePlan:
     """Remove a part by OEM PN from ungrouped parts or any job."""
     plan = load_plan(plan_id)
@@ -109,6 +138,17 @@ def remove_part(plan_id: str, oem_pn: str) -> ServicePlan:
 
 
 # ── Job management ────────────────────────────────────────────────────────────
+
+def rename_plan(plan_id: str, name: str) -> ServicePlan:
+    """Rename a service plan."""
+    name = name.strip()
+    if not name:
+        raise ValueError("Plan name cannot be empty")
+    plan = load_plan(plan_id)
+    plan.name = name
+    save_plan(plan)
+    return plan
+
 
 def add_job(
     plan_id: str,
@@ -162,6 +202,29 @@ def update_job(
     if special_instructions is not None:
         job.special_instructions = special_instructions
 
+    save_plan(plan)
+    return plan
+
+
+def delete_job(plan_id: str, job_id: str) -> ServicePlan:
+    """Delete a job, returning its parts to ungrouped."""
+    plan = load_plan(plan_id)
+    job = _find_job(plan, job_id)
+    plan.ungrouped_parts.extend(job.parts)
+    plan.jobs = [j for j in plan.jobs if j.id != job_id]
+    save_plan(plan)
+    return plan
+
+
+def unassign_part_from_job(plan_id: str, oem_pn: str, job_id: str) -> ServicePlan:
+    """Move a part from a job back to ungrouped_parts."""
+    plan = load_plan(plan_id)
+    job = _find_job(plan, job_id)
+    part = next((p for p in job.parts if p.catalog_part.oem_pn == oem_pn), None)
+    if part is None:
+        raise ValueError(f"Part '{oem_pn}' not found in job '{job_id}'")
+    job.parts.remove(part)
+    plan.ungrouped_parts.append(part)
     save_plan(plan)
     return plan
 
