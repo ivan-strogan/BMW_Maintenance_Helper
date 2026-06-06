@@ -23,6 +23,7 @@ dependencies = [
     "ollama>=0.4.0",
     "curl-cffi>=0.15.0",
     "rockauto-api",
+    "google-genai>=2.8.0",
 ]
 
 [project.scripts]

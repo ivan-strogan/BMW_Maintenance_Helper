@@ -80,9 +80,10 @@ def _parse_partsearch_results(html: str) -> list[RockAutoAlternative]:
                     availability = "map_price"  # price hidden — add to cart to see
                 else:
                     price = _parse_price(price_span.get_text(strip=True))
-            link = row.find("a", href=re.compile(r"rockauto"))
+            link = row.find("a", href=re.compile(r"(rockauto|moreinfo|partslist)"))
             if link:
-                url = link["href"]
+                href = link["href"]
+                url = href if href.startswith("http") else f"https://www.rockauto.com{href}"
 
         results.append(RockAutoAlternative(
             brand=brand,
