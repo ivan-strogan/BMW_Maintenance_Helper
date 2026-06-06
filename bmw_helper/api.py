@@ -184,7 +184,10 @@ async def rockauto_by_oem(pn: str):
     from .rockauto import RockAutoClient
     cfg = load_app_config()
     client = RockAutoClient(cfg.vehicle)
-    parts = client.search_by_oem(pn)  # sync scraper
+    try:
+        parts = client.search_by_oem(pn)
+    except Exception:
+        parts = []
     return {"oem_pn": pn, "count": len(parts), "parts": [p.model_dump() for p in parts]}
 
 
@@ -390,21 +393,52 @@ class ChatRequest(_BaseModel):
 async def ai_chat(req: ChatRequest):
     from .ai import get_ai_client
     client = get_ai_client()
-    result = client.chat(req.message, req.history)
-    return result
+    try:
+        return client.chat(req.message, req.history)
+    except Exception as exc:
+        msg = str(exc)
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            friendly = "Rate limit reached. The free tier allows 500 requests/day on gemini-3.1-flash-lite. Try again later or switch models in your .env file."
+        elif "401" in msg or "API_KEY" in msg.upper():
+            friendly = "Invalid API key. Check GEMINI_API_KEY in your .env file."
+        else:
+            friendly = f"AI error: {msg[:200]}"
+        return {"reply": friendly, "thinking": "", "tool_calls": []}
 
 
 @api.get("/api/ai/status")
 async def ai_status():
-    """Check whether Ollama is reachable and qwen3:8b is available."""
-    try:
-        from .ai import check_ollama
-        check_ollama()
-        return {"ok": True, "model": "qwen3:8b"}
-    except RuntimeError as exc:
-        return {"ok": False, "error": str(exc)}
+    """Check AI backend reachability. Returns backend name, model, and request count."""
+    from .ai import get_backend_name, thinking_supported
+    backend = get_backend_name()
+
+    if backend == "gemini":
+        from .config import get_gemini_model
+        from .ai import get_request_count, get_rate_limits
+        base = {"backend": "gemini", "model": get_gemini_model(),
+                "thinking": thinking_supported(), "requests": get_request_count(),
+                "rate": get_rate_limits()}
+        return {"ok": True, **base}
+    else:
+        try:
+            from .ai import check_ollama
+            check_ollama()
+            return {"ok": True, "backend": "ollama", "model": "qwen3:8b",
+                    "thinking": thinking_supported()}
+        except RuntimeError as exc:
+            return {"ok": False, "backend": backend, "error": str(exc)}
 
 
 # ─── Static files (last — catch-all) ──────────────────────────────────────────
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+api.add_middleware(NoCacheMiddleware)
 api.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

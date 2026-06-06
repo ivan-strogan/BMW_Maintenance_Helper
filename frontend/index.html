@@ -43,7 +43,7 @@
         <div class="flex items-center gap-1.5 text-xs text-gray-500">
           <span :class="aiOk === true ? 'bg-green-400' : aiOk === false ? 'bg-red-500' : 'bg-gray-600'"
                 class="w-2 h-2 rounded-full inline-block"></span>
-          <span x-text="aiOk === true ? 'AI ready' : aiOk === false ? 'AI offline' : 'AI...'"></span>
+          <span x-text="aiOk === true ? (aiBackend === 'gemini' ? 'Gemini ready' : 'Ollama ready') : aiOk === false ? 'AI offline' : 'AI...'"></span>
         </div>
         <button @click="chatOpen = !chatOpen"
                 :class="chatOpen ? 'bg-bmw-blue text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'"
@@ -355,7 +355,10 @@
           </div>
 
           <div x-show="catalogSelectedSub && catalogParts.length === 0 && !catalogLoading"
-               class="text-center py-16 text-gray-600">No parts found for this diagram.</div>
+               class="text-center py-16 text-gray-600 text-sm">
+            <div class="mb-2">No parts found for this diagram.</div>
+            <div class="text-xs text-gray-700">Some groups (e.g. Technical Literature, Parts Repair Service) are documentation-only and contain no purchasable parts.<br>Try <strong class="text-gray-500">Service and Scope of Repair Work</strong> for maintenance consumables.</div>
+          </div>
 
           <div x-show="catalogParts.length > 0">
             <!-- Diagram image -->
@@ -396,10 +399,11 @@
                 <tbody>
                   <template x-for="(p, pIdx) in catalogParts" :key="p.oem_pn">
                     <tr class="border-t border-gray-800/50 hover:bg-gray-800/30 transition-colors"
-                        x-data="{ raList: null, raLoading: false, raTier: 'best', raShowOos: false,
+                        x-data="{ oemPn: p.oem_pn, raList: null, raLoading: false, raTier: 'best', raShowOos: false,
                           raVisible() { return this.raList ? (this.raShowOos ? this.raList : this.raList.filter(function(r){ return r.availability !== 'out_of_stock'; })) : []; },
           raPriced() { return this.raVisible().filter(function(r){ return r.availability !== 'map_price' && r.price > 0; }); },
-                          raPickIdx() { var v = this.raPriced(); if (!v.length) return -1; if (this.raTier === 'top') return v.length-1; if (this.raTier === 'mid') return Math.floor(v.length/2); return 0; }
+                          raPickIdx() { var v = this.raPriced(); if (!v.length) return -1; if (this.raTier === 'top') return v.length-1; if (this.raTier === 'mid') return Math.floor(v.length/2); return 0; },
+                          raUrl() { var r = this.raPriced(); var i = this.raPickIdx(); return (r[i] && r[i].url) ? r[i].url : 'https://www.rockauto.com/en/partslist/?partnum=' + this.oemPn; }
                         }"
                         @ra-tier.window="raTier = $event.detail.tier; raShowOos = $event.detail.showOos"
                         x-init="setTimeout(() => { raLoading=true; fetch('/api/rockauto/oem?pn=' + p.oem_pn).then(r=>r.json()).then(d=>{ raList = d.parts || []; raLoading=false; }).catch(()=>{ raList = []; raLoading=false; }); }, pIdx * 150)">
@@ -431,8 +435,8 @@
                         <div x-show="raList !== null && raVisible().length > 0" class="flex items-center justify-end gap-1">
                           <template x-if="raPriced().length > 0">
                             <div class="text-right">
-                              <a :href="raPriced()[raPickIdx()]?.url || 'https://www.rockauto.com/en/partslist/?partnum=' + p.oem_pn"
-                                 target="_blank" rel="noopener"
+                              <a :href="raPriced()[raPickIdx()]?.url || 'https://www.rockauto.com/en/partslist/?partnum=' + oemPn"
+                                 target="_blank" rel="noopener noreferrer"
                                  class="text-green-400 hover:text-green-300 hover:underline whitespace-nowrap"
                                  x-text="'CAD$' + raPriced()[raPickIdx()]?.price.toFixed(2) + ' ' + raPriced()[raPickIdx()]?.brand"></a>
                               <div x-show="p.realoem_price && raPriced()[raPickIdx()]?.price > 0"
@@ -444,8 +448,8 @@
                             </div>
                           </template>
                           <template x-if="raPriced().length === 0">
-                            <a :href="'https://www.rockauto.com/en/partslist/?partnum=' + p.oem_pn"
-                               target="_blank" rel="noopener"
+                            <a :href="'https://www.rockauto.com/en/partslist/?partnum=' + oemPn"
+                               target="_blank" rel="noopener noreferrer"
                                class="text-yellow-500 hover:underline whitespace-nowrap text-xs">See cart ↗</a>
                           </template>
                           <button x-show="raVisible().length > 1"
@@ -687,12 +691,12 @@
     <div class="px-4 py-2.5 border-b border-gray-800 flex items-center justify-between sticky top-0 bg-gray-900">
       <span class="text-xs text-gray-500 font-mono" x-text="raDropdown.oemPn"></span>
       <a :href="'https://www.rockauto.com/en/partslist/?partnum=' + raDropdown.oemPn"
-         target="_blank" rel="noopener"
+         target="_blank" rel="noopener noreferrer"
          class="text-xs text-bmw-blue hover:underline">View all on RockAuto ↗</a>
     </div>
     <template x-for="(alt, ai) in raDropdown.list" :key="ai">
       <a :href="alt.url || 'https://www.rockauto.com/en/partslist/?partnum=' + raDropdown.oemPn"
-         target="_blank" rel="noopener"
+         target="_blank" rel="noopener noreferrer"
          @click="raDropdown.open = false"
          class="group flex items-start justify-between px-4 py-2.5 hover:bg-gray-800 border-b border-gray-800/40 last:border-0 transition-colors cursor-pointer">
         <div class="min-w-0 mr-3">
@@ -726,21 +730,36 @@
        x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
        x-transition:leave="transition ease-in duration-150"
        x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full"
-       class="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-800 flex flex-col z-40 shadow-2xl">
+       class="fixed right-0 top-0 h-full w-[48rem] bg-gray-900 border-l border-gray-800 flex flex-col z-40 shadow-2xl">
 
     <!-- Header -->
     <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
       <div class="flex items-center gap-2">
         <span class="font-semibold text-sm">AI Assistant</span>
-        <span class="text-xs text-gray-500">qwen3:8b</span>
-        <button @click="chatShowThinking = !chatShowThinking"
-                :class="chatShowThinking ? 'text-purple-400 border-purple-500/40 bg-purple-500/10' : 'text-gray-600 border-gray-700 hover:text-gray-400'"
-                class="text-xs px-2 py-0.5 rounded border transition-colors flex items-center gap-1">
-          <span>&#9670;</span>
-          <span x-text="chatShowThinking ? 'Thinking on' : 'Thinking off'"></span>
-        </button>
+        <span class="text-xs text-gray-500" x-text="aiModel || (aiBackend === 'gemini' ? 'gemini' : 'qwen3:8b')"></span>
+        <div class="relative" x-data="{ tipOpen: false }">
+          <button @click="aiThinkingSupported && (chatShowThinking = !chatShowThinking)"
+                  @mouseenter="!aiThinkingSupported && (tipOpen = true)"
+                  @mouseleave="tipOpen = false"
+                  :class="!aiThinkingSupported ? 'text-gray-700 border-gray-800 cursor-not-allowed opacity-50' : chatShowThinking ? 'text-purple-400 border-purple-500/40 bg-purple-500/10' : 'text-gray-600 border-gray-700 hover:text-gray-400'"
+                  class="text-xs px-2 py-0.5 rounded border transition-colors flex items-center gap-1">
+            <span>&#9670;</span>
+            <span x-text="chatShowThinking ? 'Thinking on' : 'Thinking off'"></span>
+          </button>
+          <div x-show="tipOpen"
+               class="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-3 py-2 whitespace-nowrap z-50 shadow-xl"
+               x-text="'Not supported by ' + (aiModel || 'this model') + '. Switch to gemini-2.5-flash in .env.'">
+          </div>
+        </div>
       </div>
       <div class="flex items-center gap-2">
+        <a x-show="aiBackend === 'gemini'"
+           href="https://aistudio.google.com/app/rate-limit"
+           target="_blank" rel="noopener noreferrer"
+           :class="aiRequestCount >= 475 ? 'text-red-400 hover:text-red-300' : aiRequestCount >= 400 ? 'text-orange-400 hover:text-orange-300' : aiRequestCount >= 300 ? 'text-yellow-400 hover:text-yellow-300' : 'text-green-500 hover:text-green-400'"
+           class="text-xs font-mono hover:underline"
+           x-text="aiRequestCount !== null ? aiRequestCount + '/500' : '?/500'"
+           title="View quota usage in Google AI Studio"></a>
         <button @click="clearChat()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
         <button @click="chatOpen = false" class="text-gray-500 hover:text-gray-300 text-xl leading-none">&times;</button>
       </div>

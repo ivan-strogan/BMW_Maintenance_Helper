@@ -1,11 +1,24 @@
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from ruamel.yaml import YAML
 
 from .models import AppConfig, MaintenanceSchedule, ServiceHistory
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 _yaml = YAML()
+
+# Load .env from project root (silently ignored if missing)
+load_dotenv(Path(__file__).parent.parent / ".env")
+
+
+def get_gemini_api_key() -> str | None:
+    return os.environ.get("GEMINI_API_KEY") or None
+
+
+def get_gemini_model() -> str:
+    return os.environ.get("GEMINI_MODEL") or "gemini-3.1-flash-lite"
 
 
 def load_app_config() -> AppConfig:

@@ -14,7 +14,11 @@ function app() {
     expandedItemId: null,
 
     // ── AI chat state ──────────────────────────────────────────────────────
-    aiOk: null, // null=checking, true=ok, false=unavailable
+    aiOk: null,             // null=checking, true=ok, false=unavailable
+    aiBackend: null,        // 'gemini' | 'ollama'
+    aiModel: null,          // e.g. 'gemini-3.1-flash-lite' or 'qwen3:8b'
+    aiThinkingSupported: true,
+    aiRequestCount: null, // number of Gemini requests today (null = not tracked)
     chatOpen: false,
     chatMessages: [], // [{role, content, thinking, tool_calls}]
     chatInput: '',
@@ -141,6 +145,10 @@ function app() {
         const res = await fetch('/api/ai/status');
         const data = await res.json();
         this.aiOk = data.ok;
+        this.aiBackend = data.backend || null;
+        this.aiModel = data.model || null;
+        this.aiThinkingSupported = data.thinking !== false;
+        this.aiRequestCount = data.requests?.count ?? null;
       } catch {
         this.aiOk = false;
       }
@@ -152,6 +160,7 @@ function app() {
       if (!msg || this.chatLoading) return;
       this.chatInput = '';
       this.chatMessages.push({ role: 'user', content: msg, ts: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+      if (this.aiBackend === 'gemini') this.aiRequestCount = (this.aiRequestCount || 0) + 1;
       this.chatLoading = true;
 
       // Build history for the API (exclude tool_calls field)
@@ -183,6 +192,7 @@ function app() {
         });
       }
       this.chatLoading = false;
+      if (this.aiBackend === 'gemini') this.checkAiStatus();
       this.$nextTick(() => {
         const el = document.getElementById('chat-messages');
         if (el) el.scrollTop = el.scrollHeight;

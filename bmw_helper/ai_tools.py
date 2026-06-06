@@ -129,6 +129,28 @@ TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "get_catalog_parts",
+            "description": (
+                "Fetch the list of OEM parts for a specific diagram. "
+                "Call search_catalog first to get the diag_id, then call this "
+                "to get the actual part numbers, descriptions, quantities and prices. "
+                "Returns a list of parts with oem_pn, description, qty, price, and diagram_ref."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "diag_id": {
+                        "type": "string",
+                        "description": "Diagram ID from search_catalog result (e.g. '11_3971').",
+                    },
+                },
+                "required": ["diag_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_parts_to_plan",
             "description": (
                 "Add one or more OEM parts to a service plan. "
@@ -257,6 +279,33 @@ def search_catalog(hint: str) -> dict:
         return {"error": str(exc), "hint": hint, "matches": []}
 
 
+def get_catalog_parts(diag_id: str) -> dict:
+    """Fetch the actual OEM parts list for a diagram ID."""
+    cfg = load_app_config()
+    from .realoem import RealOEMClient
+    client = RealOEMClient()
+    try:
+        catalog_id = cfg.vehicle.catalog_id or client.resolve_catalog_id(cfg.vehicle.vin)
+        parts, diagram_url = client.get_parts(catalog_id, diag_id)
+        return {
+            "diag_id": diag_id,
+            "diagram_url": diagram_url,
+            "parts": [
+                {
+                    "oem_pn": p.oem_pn,
+                    "description": p.description,
+                    "qty": p.qty_required,
+                    "realoem_price_usd": p.realoem_price,
+                    "diagram_ref": p.diagram_ref,
+                    "fitment_note": p.fitment_note,
+                }
+                for p in parts
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc), "diag_id": diag_id, "parts": []}
+
+
 def get_rockauto_alternatives(oem_pn: str | None = None, hint: str | None = None) -> list[dict]:
     """Return RockAuto aftermarket alternatives by OEM PN or catalog hint."""
     import asyncio
@@ -267,10 +316,12 @@ def get_rockauto_alternatives(oem_pn: str | None = None, hint: str | None = None
 
     try:
         if oem_pn:
-            # sync scraper — no event loop needed
             parts = client.search_by_oem(oem_pn)
         elif hint:
-            parts = asyncio.run(client.search_by_hint(hint))
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(asyncio.run, client.search_by_hint(hint))
+                parts = future.result(timeout=30)
         else:
             parts = []
     except Exception as exc:
@@ -347,6 +398,7 @@ TOOL_REGISTRY: dict[str, Any] = {
     "get_service_history": lambda item_id=None, **_: get_service_history(item_id),
     "get_overdue_items": lambda **_: get_overdue_items(),
     "search_catalog": lambda hint="", **_: search_catalog(hint),
+    "get_catalog_parts": lambda diag_id="", **_: get_catalog_parts(diag_id),
     "get_rockauto_alternatives": lambda oem_pn=None, hint=None, **_: get_rockauto_alternatives(oem_pn, hint),
     "list_plans": lambda **_: list_plans(),
     "create_plan": lambda name="", **_: create_plan(name),

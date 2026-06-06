@@ -13,6 +13,15 @@ uv.lock          # commit this if you want reproducible installs; remove line if
 
 # ── App cache ───────────────────────────────────────────────
 cache/
+.cache/
+
+# ── Node / Playwright ───────────────────────────────────────
+node_modules/
+test-results/
+playwright-report/
+
+# ── Secrets ─────────────────────────────────────────────────
+.env
 
 # ── Personal config (contains VIN, email, odometer) ─────────
 config/vehicle.yaml
